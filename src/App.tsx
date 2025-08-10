@@ -11,7 +11,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 const CONFIG = {
   clientId: "19a3021d-6ea2-4436-8a84-e73362b14135",              // ← paste your Application (client) ID
   authority: "https://login.microsoftonline.com/consumers", // personal Microsoft account
-  redirectUri: "https://trade-logger-charmedvies-projects.vercel.app/",
+  redirectUri: "https://trade-logger-omega.vercel.app/",
 
   filePath: "/Trade/Log1.xlsx",        // ← your OneDrive path, keep leading '/'
   tableName: "Tradelog",                         // ← your Excel table name (case-sensitive)
