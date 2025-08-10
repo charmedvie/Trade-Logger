@@ -265,27 +265,28 @@ async function fetchListOptions(tableName) {
 
 // -------------------- App --------------------
 export default function App() {
-  const [account, setAccount] = useState<any>(null);
-  const [recent, setRecent] = useState<any[]>([]);
+  const [account, setAccount] = useState(null);
+  const [recent, setRecent] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [listOptions, setListOptions] = useState<Record<string, string[]>>({});
-  const [preview, setPreview] = useState<{headers: string[]; values: string[]} | null>(null);
+  const [listOptions, setListOptions] = useState({});
+  const [preview, setPreview] = useState(null); // will hold { headers, values }
   const [previewBusy, setPreviewBusy] = useState(false);
 
-  // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth <= 640);
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
+useEffect(() => {
+  const onResize = () => setIsMobile(window.innerWidth <= 640);
+  onResize();
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
+}, []);
+
 
   // Default form values (manual-entry columns only)
   const defaultForm = () => ({
-    type: "stock option",
-    acc: "",
+    // Defaults
+    type: "stock option",   // from Typelist
+    acc: "",                // choose from Acclist
     inDate: new Date().toISOString().slice(0, 10),
     ticker: "",
     strike: "",
@@ -293,14 +294,14 @@ export default function App() {
     avgPrice: "",
     fees: "0",
     expDate: "",
-    status: "",
+    status: "",             // ← blank by default
     outDate: "",
     outWk: "",
     outYr: "",
     exitPrice: "",
     proceeds: "",
     pnl: "",
-    tradeType: "CC",
+    tradeType: "CC",        // from Tradetypelist
     roiCb: "",
     roi: "",
     time: "",
@@ -309,53 +310,81 @@ export default function App() {
     costBasis: "",
     margin: "",
   });
-  const [form, setForm] = useState(defaultForm());
-
+  const [form, setForm] = useState(defaultForm);
   const [showOut, setShowOut] = useState(false);
-  const OUT_FIELDS = useMemo(() => new Set(["Out date", "Status", "Exit price"]), []);
-  const [notice, setNotice] = useState("");
+  const OUT_FIELDS = new Set(["Out date", "Status", "Exit price"]);
+  const [notice, setNotice] = useState(""); // shows a success toast
 
-  // MSAL init + load data
   useEffect(() => {
-    (async () => {
-      await ensureMsalInitialized();
+  (async () => {
+    await ensureMsalInitialized();
 
-      const resp = await msal.handleRedirectPromise();
-      if (resp?.account) {
-        msal.setActiveAccount(resp.account);
-        setAccount(resp.account);
-      } else {
-        const accs = msal.getAllAccounts();
-        if (accs.length) {
-          msal.setActiveAccount(accs[0]);
-          setAccount(accs[0]);
-        }
+    // Handle redirect result (also runs on Safari if we fall back to redirect)
+    const resp = await msal.handleRedirectPromise();
+    if (resp?.account) {
+      msal.setActiveAccount(resp.account);
+      setAccount(resp.account);
+    } else {
+      const accs = msal.getAllAccounts();
+      if (accs.length) {
+        msal.setActiveAccount(accs[0]);
+        setAccount(accs[0]);
       }
+    }
 
-      if (msal.getActiveAccount()) {
-        await Promise.all([refresh(), loadLists()]);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (msal.getActiveAccount()) {
+      await Promise.all([refresh(), loadLists()]);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);;
 
-  // helpers for fields/columns
-  const headers = useMemo(() => CONFIG.colMapping.map(c => c.header), []);
-  const editableCols = useMemo(
-    () => CONFIG.colMapping.filter(c => !FORMULA_COLS.has(c.header)),
-    []
-  );
-  const mainFields = useMemo(
-    () => editableCols.filter(c => !OUT_FIELDS.has(c.header)),
-    [editableCols, OUT_FIELDS]
-  );
-  const outFields = useMemo(
-    () => editableCols.filter(c => OUT_FIELDS.has(c.header)),
-    [editableCols, OUT_FIELDS]
-  );
+  async function signIn() {
+  setErr("");
+  try {
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
-  // Recent table: which columns to show
-  const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
+    const request = {
+      scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+      prompt: "select_account",
+      redirectUri: CONFIG.redirectUri
+    };
+
+    if (isSafari) {
+      await msal.loginRedirect(request);
+      return; // flow continues in handleRedirectPromise
+    }
+
+    const res = await msal.loginPopup(request);
+    if (res?.account) {
+      msal.setActiveAccount(res.account);
+      setAccount(res.account);
+      await Promise.all([refresh(), loadLists()]);
+    } else {
+      // If popup returned nothing, fall back to redirect
+      await msal.loginRedirect(request);
+    }
+  } catch (e: any) {
+    setErr(e.message || String(e));
+  }
+}
+
+  async function signOut() {
+  try {
+    const acc = msal.getActiveAccount();
+    if (acc) {
+      await msal.logoutPopup({
+        account: acc,
+        postLogoutRedirectUri: CONFIG.redirectUri
+      });
+    }
+  } finally {
+    setAccount(null);
+    setRecent([]);
+    setListOptions({});
+    setPreview(null);
+  }
+}
   
   // --- Helper to parse Excel dates ---
 // Parse Excel date to a sortable timestamp (ms). Returns -Infinity if unknown.
@@ -685,8 +714,6 @@ async function refresh() {
   const editableCols = useMemo(() => CONFIG.colMapping.filter(c => !FORMULA_COLS.has(c.header)), []);
   const mainFields = useMemo(() => editableCols.filter(c => !OUT_FIELDS.has(c.header)), [editableCols]);
   const outFields  = useMemo(() => editableCols.filter(c =>  OUT_FIELDS.has(c.header)), [editableCols]);
-    // Recent table: only show selected columns
-  const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 12, maxWidth: 720, margin: "0 auto",minHeight: "100vh",
@@ -838,94 +865,63 @@ async function refresh() {
 
   <Card tint="rgba(255,255,224,0.6)">
   <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
+      <thead>
+        <tr>
+          {headers.map(h => (
+            <th
+              key={h}
+              style={{
+                textAlign: "left",
+                padding: "10px 12px",
+                color: "#555",
+                borderBottom: "1px solid #eee",
+                background: "rgba(255,255,255,0.45)",
+                backdropFilter: "blur(4px)"
+              }}
+            >
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+      {recent.map((row, i) => {
+        const outWkIdx = CONFIG.colMapping.findIndex(c => c.header === "Out wk");
+        const outWkVal = outWkIdx >= 0 ? row[outWkIdx] : null;
+        const isOutWkZero = Number(String(outWkVal).replace(/,/g,"")) === 0;
 
-  {/* Desktop/tablet: compact table with hidden columns removed */}
-  {!isMobile && (
-    <div style={{ overflowX: "auto" }}>
-      <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {recentVisibleIdxs.map(i => {
-              const h = CONFIG.colMapping[i].header;
+        return (
+          <tr
+            key={i}
+            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.4)"}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+            style={isOutWkZero ? { background: "#ffffff" } : {}}
+          >
+            {row.map((cell, j) => {
+              const header = (CONFIG.colMapping[j] && CONFIG.colMapping[j].header) || "";
+              const val = prettyCell(cell, header);
               return (
-                <th
-                  key={h}
+                <td
+                  key={j}
                   style={{
-                    textAlign: "left",
                     padding: "10px 12px",
-                    color: "#555",
-                    borderBottom: "1px solid #eee",
-                    background: "rgba(255,255,255,0.45)",
-                    backdropFilter: "blur(4px)"
+                    borderBottom: "1px solid #f2f2f2",
+                    whiteSpace: "nowrap",
+                    ...cellStyle(header, cell)
                   }}
                 >
-                  {h}
-                </th>
+                  {val}
+                </td>
               );
             })}
           </tr>
-        </thead>
-        <tbody>
-          {recent.map((row, i) => {
-            const outWkIdx = CONFIG.colMapping.findIndex(c => c.header === "Out wk");
-            const outWkVal = outWkIdx >= 0 ? row[outWkIdx] : null;
-            const isOutWkZero = Number(String(outWkVal).replace(/,/g,"")) === 0;
-
-            return (
-              <tr
-                key={i}
-                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.4)"}
-                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                style={isOutWkZero ? { background: "#ffffff" } : {}}
-              >
-                {recentVisibleIdxs.map(j => {
-                  const header = CONFIG.colMapping[j].header;
-                  const cell = row[j];
-                  const val = prettyCell(cell, header);
-                  return (
-                    <td
-                      key={j}
-                      style={{
-                        padding: "10px 12px",
-                        borderBottom: "1px solid #f2f2f2",
-                        whiteSpace: "nowrap",
-                        ...cellStyle(header, cell)
-                      }}
-                    >
-                      {val}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  )}
-
-  {/* Mobile: stacked cards, NO horizontal scroll */}
-  {isMobile && (
-    <div style={{ display: "grid", gap: 8 }}>
-      {recent.map((row, i) => (
-        <div key={i} className="mobile-card">
-          <div className="mobile-row">
-            {recentVisibleIdxs.map(j => {
-              const header = CONFIG.colMapping[j].header;
-              const cell = row[j];
-              const val = prettyCell(cell, header);
-              return (
-                <div key={j} className="mobile-kv">
-                  <span className="k">{header}</span>
-                  <span className="v" style={cellStyle(header, cell)}>{val}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  )}
+        );
+      })}
+      </tbody>
+    </table>
+  </div>
 </Card>
 
 <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
