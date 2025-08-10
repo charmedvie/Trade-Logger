@@ -6,7 +6,7 @@
 // -----------------------------------------------------------------------------
 import React, { useEffect, useMemo, useState } from "react";
 import { PublicClientApplication } from "@azure/msal-browser";
-import { EventType } from "@azure/msal-browser";
+/*import { EventType } from "@azure/msal-browser";
 
 msal.addEventCallback((event) => {
   if (event.eventType === EventType.LOGIN_SUCCESS || event.eventType === EventType.ACQUIRE_TOKEN_SUCCESS) {
@@ -16,7 +16,7 @@ msal.addEventCallback((event) => {
       // don't call setAccount here if you're not in a React-safe context
     }
   }
-});
+});*/
 
 // -------------------- CONFIG (CUSTOMISE THESE) --------------------
 const CONFIG = {
