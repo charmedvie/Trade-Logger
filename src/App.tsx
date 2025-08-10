@@ -81,13 +81,22 @@ async function ensureMsalInitialized() {
 
 async function getAccessToken() {
   const accounts = msal.getAllAccounts();
-  const request = { scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"], account: accounts[0] };
-  try { return (await msal.acquireTokenSilent(request)).accessToken; }
-  catch { return (await msal.acquireTokenPopup({ scopes: request.scopes })).accessToken; }
-  catch {
-    return (await msal.acquireTokenPopup({
-    scopes: request.scopes,
-    redirectUri: CONFIG.redirectUri})).accessToken;
+  const request = {
+    scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+    account: accounts[0]
+  };
+
+  try {
+    const res = await msal.acquireTokenSilent(request);
+    return res.accessToken;
+  } catch (e) {
+    const res = await msal.acquireTokenPopup({
+      scopes: request.scopes,
+      redirectUri: CONFIG.redirectUri,
+      account: accounts[0]
+    });
+    return res.accessToken;
+  }
 }
 
 async function graphFetch(path, options = {}) {
@@ -285,24 +294,20 @@ export default function App() {
   }, []);
 
   async function signIn() {
-    setErr("");
-    try {
-      const res = await msal.loginPopup({ scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"], prompt: "select_account" });
-      const res = await msal.loginPopup({
-        scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
-        prompt: "select_account",
-        redirectUri: CONFIG.redirectUri
-        });
-      msal.setActiveAccount(res.account); setAccount(res.account);
-      await Promise.all([refresh(), loadLists()]);
-    } catch (e) { setErr(e.message); }
+  setErr("");
+  try {
+    const res = await msal.loginPopup({
+      scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+      prompt: "select_account",
+      redirectUri: CONFIG.redirectUri
+    });
+    msal.setActiveAccount(res.account);
+    setAccount(res.account);
+    await Promise.all([refresh(), loadLists()]);
+  } catch (e: any) {
+    setErr(e.message || String(e));
   }
-
-  async function signOut() {
-    const acc = msal.getActiveAccount();
-    if (acc) await msal.logoutPopup({ account: acc });
-    setAccount(null); setRecent([]); setListOptions({});
-  }
+}
 
   // --- Helper to parse Excel dates ---
 // Parse Excel date to a sortable timestamp (ms). Returns -Infinity if unknown.
