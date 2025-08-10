@@ -278,8 +278,6 @@ useEffect(() => {
   const onResize = () => setIsMobile(window.innerWidth <= 640);
   onResize();
   window.addEventListener("resize", onResize);
-  // ▼ Recent table: only show selected columns
-const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
 
   // Default form values (manual-entry columns only)
   const defaultForm = () => ({
@@ -713,6 +711,8 @@ async function refresh() {
   const editableCols = useMemo(() => CONFIG.colMapping.filter(c => !FORMULA_COLS.has(c.header)), []);
   const mainFields = useMemo(() => editableCols.filter(c => !OUT_FIELDS.has(c.header)), [editableCols]);
   const outFields  = useMemo(() => editableCols.filter(c =>  OUT_FIELDS.has(c.header)), [editableCols]);
+    // Recent table: only show selected columns
+  const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 12, maxWidth: 720, margin: "0 auto",minHeight: "100vh",
