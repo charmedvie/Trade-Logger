@@ -718,6 +718,16 @@ async function refresh() {
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial", padding: 12, maxWidth: 720, margin: "0 auto",minHeight: "100vh",
     background: "linear-gradient(135deg, rgba(255,240,245,0.8) 0%, rgba(240,255,250,0.8) 33%, rgba(240,248,255,0.8) 66%, rgba(255,250,240,0.8) 100%)"}}>
+     <style>{`
+      @media (max-width: 640px) {
+        .form-grid { grid-template-columns: 1fr !important; }
+        .mobile-card { border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 10px; background: rgba(255,255,255,0.5); }
+        .mobile-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .mobile-kv  { display: flex; justify-content: space-between; gap: 8px; }
+        .mobile-kv .k { color: #666; }
+        .mobile-kv .v { font-weight: 500; }
+      }
+    `}</style>
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} />
 
       {err && <Alert>{err}</Alert>}
@@ -738,7 +748,7 @@ async function refresh() {
 
       <Card tint="rgba(224,255,255,0.6)"> 
         <h3 style={{ marginTop: 0 }}>Quick Add Trade</h3>
-        <form onSubmit={save} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <form onSubmit={save} className="form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         {mainFields.map(c => (
           <Field key={c.header} label={c.header} full={c.header === "Notes"}>
             {renderInput(c, form, onChange, listOptions)}
