@@ -6,17 +6,6 @@
 // -----------------------------------------------------------------------------
 import React, { useEffect, useMemo, useState } from "react";
 import { PublicClientApplication } from "@azure/msal-browser";
-/*import { EventType } from "@azure/msal-browser";
-
-msal.addEventCallback((event) => {
-  if (event.eventType === EventType.LOGIN_SUCCESS || event.eventType === EventType.ACQUIRE_TOKEN_SUCCESS) {
-    const acc = event.payload?.account;
-    if (acc) {
-      msal.setActiveAccount(acc);
-      // don't call setAccount here if you're not in a React-safe context
-    }
-  }
-});*/
 
 // -------------------- CONFIG (CUSTOMISE THESE) --------------------
 const CONFIG = {
@@ -78,6 +67,27 @@ const LIST_COL_TABLE = {
   "Status": "Statuslist",
   // Position intentionally free-text
 };
+
+// Columns to hide in the "Recent (from Excel)" view (mobile+desktop)
+const HIDE_IN_RECENT = new Set([
+  "Margin",
+  "Fees",
+  "Out YR",
+  "Proceeds",
+  "ROI cb",
+  "Roi",
+  "Notes",
+  "Cost Basis",
+  "Out date",
+  "Exit price",
+]);
+
+// Helper: indices of columns we DO show in Recent
+function getRecentVisibleIndices() {
+  return CONFIG.colMapping
+    .map((c, i) => (!HIDE_IN_RECENT.has(c.header) ? i : -1))
+    .filter(i => i !== -1);
+}
 
 // -------------------- MSAL + Graph helpers --------------------
 const msal = new PublicClientApplication({
@@ -262,6 +272,15 @@ export default function App() {
   const [listOptions, setListOptions] = useState({});
   const [preview, setPreview] = useState(null); // will hold { headers, values }
   const [previewBusy, setPreviewBusy] = useState(false);
+
+  const [isMobile, setIsMobile] = useState(false);
+useEffect(() => {
+  const onResize = () => setIsMobile(window.innerWidth <= 640);
+  onResize();
+  window.addEventListener("resize", onResize);
+  return () => window.removeEventListener("resize", onResize);
+}, []);
+
 
   // Default form values (manual-entry columns only)
   const defaultForm = () => ({
