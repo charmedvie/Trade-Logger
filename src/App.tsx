@@ -6,6 +6,17 @@
 // -----------------------------------------------------------------------------
 import React, { useEffect, useMemo, useState } from "react";
 import { PublicClientApplication } from "@azure/msal-browser";
+import { EventType } from "@azure/msal-browser";
+
+msal.addEventCallback((event) => {
+  if (event.eventType === EventType.LOGIN_SUCCESS || event.eventType === EventType.ACQUIRE_TOKEN_SUCCESS) {
+    const acc = event.payload?.account;
+    if (acc) {
+      msal.setActiveAccount(acc);
+      // don't call setAccount here if you're not in a React-safe context
+    }
+  }
+});
 
 // -------------------- CONFIG (CUSTOMISE THESE) --------------------
 const CONFIG = {
@@ -70,8 +81,16 @@ const LIST_COL_TABLE = {
 
 // -------------------- MSAL + Graph helpers --------------------
 const msal = new PublicClientApplication({
-  auth: { clientId: CONFIG.clientId, authority: CONFIG.authority, redirectUri: CONFIG.redirectUri },
-  cache: { cacheLocation: "localStorage" },
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: CONFIG.authority,
+    redirectUri: CONFIG.redirectUri,
+    navigateToLoginRequestUrl: false
+  },
+  cache: {
+    cacheLocation: "localStorage",
+    storeAuthStateInCookie: true   // <-- important for Safari/ITP
+  }
 });
 
 // Ensure MSAL v3 is initialized before any calls
@@ -278,32 +297,54 @@ export default function App() {
   const [notice, setNotice] = useState(""); // shows a success toast
 
   useEffect(() => {
-    (async () => {
-      await ensureMsalInitialized();
-      await msal.handleRedirectPromise();
-  
+  (async () => {
+    await ensureMsalInitialized();
+
+    // Handle redirect result (also runs on Safari if we fall back to redirect)
+    const resp = await msal.handleRedirectPromise();
+    if (resp?.account) {
+      msal.setActiveAccount(resp.account);
+      setAccount(resp.account);
+    } else {
       const accs = msal.getAllAccounts();
       if (accs.length) {
         msal.setActiveAccount(accs[0]);
         setAccount(accs[0]);
-        await refresh();
-        await loadLists();
       }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    }
+
+    if (msal.getActiveAccount()) {
+      await Promise.all([refresh(), loadLists()]);
+    }
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);;
 
   async function signIn() {
   setErr("");
   try {
-    const res = await msal.loginPopup({
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+    const request = {
       scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
       prompt: "select_account",
       redirectUri: CONFIG.redirectUri
-    });
-    msal.setActiveAccount(res.account);
-    setAccount(res.account);
-    await Promise.all([refresh(), loadLists()]);
+    };
+
+    if (isSafari) {
+      await msal.loginRedirect(request);
+      return; // flow continues in handleRedirectPromise
+    }
+
+    const res = await msal.loginPopup(request);
+    if (res?.account) {
+      msal.setActiveAccount(res.account);
+      setAccount(res.account);
+      await Promise.all([refresh(), loadLists()]);
+    } else {
+      // If popup returned nothing, fall back to redirect
+      await msal.loginRedirect(request);
+    }
   } catch (e: any) {
     setErr(e.message || String(e));
   }
