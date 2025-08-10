@@ -865,63 +865,91 @@ async function refresh() {
 
   <Card tint="rgba(255,255,224,0.6)">
   <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
-  <div style={{ overflowX: "auto" }}>
-    <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
-      <thead>
-        <tr>
-          {headers.map(h => (
-            <th
-              key={h}
-              style={{
-                textAlign: "left",
-                padding: "10px 12px",
-                color: "#555",
-                borderBottom: "1px solid #eee",
-                background: "rgba(255,255,255,0.45)",
-                backdropFilter: "blur(4px)"
-              }}
-            >
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-      {recent.map((row, i) => {
-        const outWkIdx = CONFIG.colMapping.findIndex(c => c.header === "Out wk");
-        const outWkVal = outWkIdx >= 0 ? row[outWkIdx] : null;
-        const isOutWkZero = Number(String(outWkVal).replace(/,/g,"")) === 0;
 
-        return (
-          <tr
-            key={i}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.4)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-            style={isOutWkZero ? { background: "#ffffff" } : {}}
-          >
-            {row.map((cell, j) => {
-              const header = (CONFIG.colMapping[j] && CONFIG.colMapping[j].header) || "";
+  {/* Desktop/tablet: compact table with hidden columns removed */}
+  {!isMobile && (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {recentHeaders.map(h => (
+              <th
+                key={h}
+                style={{
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  color: "#555",
+                  borderBottom: "1px solid #eee",
+                  background: "rgba(255,255,255,0.45)",
+                  backdropFilter: "blur(4px)"
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {recent.map((row, i) => {
+            const outWkIdx = CONFIG.colMapping.findIndex(c => c.header === "Out wk");
+            const outWkVal = outWkIdx >= 0 ? row[outWkIdx] : null;
+            const isOutWkZero = Number(String(outWkVal).replace(/,/g,"")) === 0;
+
+            return (
+              <tr
+                key={i}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.4)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                style={isOutWkZero ? { background: "#ffffff" } : {}}
+              >
+                {recentVisibleIdxs.map(j => {
+                  const header = CONFIG.colMapping[j].header;
+                  const cell = row[j];
+                  const val = prettyCell(cell, header);
+                  return (
+                    <td
+                      key={j}
+                      style={{
+                        padding: "10px 12px",
+                        borderBottom: "1px solid #f2f2f2",
+                        whiteSpace: "nowrap",
+                        ...cellStyle(header, cell)
+                      }}
+                    >
+                      {val}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  {/* Mobile: stacked cards, NO horizontal scroll */}
+  {isMobile && (
+    <div style={{ display: "grid", gap: 8 }}>
+      {recent.map((row, i) => (
+        <div key={i} className="mobile-card">
+          <div className="mobile-row">
+            {recentVisibleIdxs.map(j => {
+              const header = CONFIG.colMapping[j].header;
+              const cell = row[j];
               const val = prettyCell(cell, header);
               return (
-                <td
-                  key={j}
-                  style={{
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #f2f2f2",
-                    whiteSpace: "nowrap",
-                    ...cellStyle(header, cell)
-                  }}
-                >
-                  {val}
-                </td>
+                <div key={j} className="mobile-kv">
+                  <span className="k">{header}</span>
+                  <span className="v" style={cellStyle(header, cell)}>{val}</span>
+                </div>
               );
             })}
-          </tr>
-        );
-      })}
-      </tbody>
-    </table>
-  </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
 </Card>
 
 <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
