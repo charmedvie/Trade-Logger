@@ -278,6 +278,12 @@ useEffect(() => {
   const onResize = () => setIsMobile(window.innerWidth <= 640);
   onResize();
   window.addEventListener("resize", onResize);
+  // ▼ Recent table: only show selected columns
+const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
+const recentHeaders = useMemo(
+  () => recentVisibleIdxs.map(i => CONFIG.colMapping[i].header),
+  [recentVisibleIdxs]
+);
   return () => window.removeEventListener("resize", onResize);
 }, []);
 
