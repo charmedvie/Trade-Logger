@@ -309,6 +309,23 @@ export default function App() {
   }
 }
 
+  async function signOut() {
+  try {
+    const acc = msal.getActiveAccount();
+    if (acc) {
+      await msal.logoutPopup({
+        account: acc,
+        postLogoutRedirectUri: CONFIG.redirectUri
+      });
+    }
+  } finally {
+    setAccount(null);
+    setRecent([]);
+    setListOptions({});
+    setPreview(null);
+  }
+}
+  
   // --- Helper to parse Excel dates ---
 // Parse Excel date to a sortable timestamp (ms). Returns -Infinity if unknown.
 function excelDateToTime(val) {
