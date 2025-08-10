@@ -265,25 +265,27 @@ async function fetchListOptions(tableName) {
 
 // -------------------- App --------------------
 export default function App() {
-  const [account, setAccount] = useState(null);
-  const [recent, setRecent] = useState([]);
+  const [account, setAccount] = useState<any>(null);
+  const [recent, setRecent] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [listOptions, setListOptions] = useState({});
-  const [preview, setPreview] = useState(null); // will hold { headers, values }
+  const [listOptions, setListOptions] = useState<Record<string, string[]>>({});
+  const [preview, setPreview] = useState<{headers: string[]; values: string[]} | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
+  // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
-useEffect(() => {
-  const onResize = () => setIsMobile(window.innerWidth <= 640);
-  onResize();
-  window.addEventListener("resize", onResize);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Default form values (manual-entry columns only)
   const defaultForm = () => ({
-    // Defaults
-    type: "stock option",   // from Typelist
-    acc: "",                // choose from Acclist
+    type: "stock option",
+    acc: "",
     inDate: new Date().toISOString().slice(0, 10),
     ticker: "",
     strike: "",
@@ -291,14 +293,14 @@ useEffect(() => {
     avgPrice: "",
     fees: "0",
     expDate: "",
-    status: "",             // ← blank by default
+    status: "",
     outDate: "",
     outWk: "",
     outYr: "",
     exitPrice: "",
     proceeds: "",
     pnl: "",
-    tradeType: "CC",        // from Tradetypelist
+    tradeType: "CC",
     roiCb: "",
     roi: "",
     time: "",
@@ -307,81 +309,53 @@ useEffect(() => {
     costBasis: "",
     margin: "",
   });
-  const [form, setForm] = useState(defaultForm);
+  const [form, setForm] = useState(defaultForm());
+
   const [showOut, setShowOut] = useState(false);
-  const OUT_FIELDS = new Set(["Out date", "Status", "Exit price"]);
-  const [notice, setNotice] = useState(""); // shows a success toast
+  const OUT_FIELDS = useMemo(() => new Set(["Out date", "Status", "Exit price"]), []);
+  const [notice, setNotice] = useState("");
 
+  // MSAL init + load data
   useEffect(() => {
-  (async () => {
-    await ensureMsalInitialized();
+    (async () => {
+      await ensureMsalInitialized();
 
-    // Handle redirect result (also runs on Safari if we fall back to redirect)
-    const resp = await msal.handleRedirectPromise();
-    if (resp?.account) {
-      msal.setActiveAccount(resp.account);
-      setAccount(resp.account);
-    } else {
-      const accs = msal.getAllAccounts();
-      if (accs.length) {
-        msal.setActiveAccount(accs[0]);
-        setAccount(accs[0]);
+      const resp = await msal.handleRedirectPromise();
+      if (resp?.account) {
+        msal.setActiveAccount(resp.account);
+        setAccount(resp.account);
+      } else {
+        const accs = msal.getAllAccounts();
+        if (accs.length) {
+          msal.setActiveAccount(accs[0]);
+          setAccount(accs[0]);
+        }
       }
-    }
 
-    if (msal.getActiveAccount()) {
-      await Promise.all([refresh(), loadLists()]);
-    }
-  })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);;
+      if (msal.getActiveAccount()) {
+        await Promise.all([refresh(), loadLists()]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  async function signIn() {
-  setErr("");
-  try {
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  // helpers for fields/columns
+  const headers = useMemo(() => CONFIG.colMapping.map(c => c.header), []);
+  const editableCols = useMemo(
+    () => CONFIG.colMapping.filter(c => !FORMULA_COLS.has(c.header)),
+    []
+  );
+  const mainFields = useMemo(
+    () => editableCols.filter(c => !OUT_FIELDS.has(c.header)),
+    [editableCols, OUT_FIELDS]
+  );
+  const outFields = useMemo(
+    () => editableCols.filter(c => OUT_FIELDS.has(c.header)),
+    [editableCols, OUT_FIELDS]
+  );
 
-    const request = {
-      scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
-      prompt: "select_account",
-      redirectUri: CONFIG.redirectUri
-    };
-
-    if (isSafari) {
-      await msal.loginRedirect(request);
-      return; // flow continues in handleRedirectPromise
-    }
-
-    const res = await msal.loginPopup(request);
-    if (res?.account) {
-      msal.setActiveAccount(res.account);
-      setAccount(res.account);
-      await Promise.all([refresh(), loadLists()]);
-    } else {
-      // If popup returned nothing, fall back to redirect
-      await msal.loginRedirect(request);
-    }
-  } catch (e: any) {
-    setErr(e.message || String(e));
-  }
-}
-
-  async function signOut() {
-  try {
-    const acc = msal.getActiveAccount();
-    if (acc) {
-      await msal.logoutPopup({
-        account: acc,
-        postLogoutRedirectUri: CONFIG.redirectUri
-      });
-    }
-  } finally {
-    setAccount(null);
-    setRecent([]);
-    setListOptions({});
-    setPreview(null);
-  }
-}
+  // Recent table: which columns to show
+  const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
   
   // --- Helper to parse Excel dates ---
 // Parse Excel date to a sortable timestamp (ms). Returns -Infinity if unknown.
