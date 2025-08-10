@@ -280,13 +280,6 @@ useEffect(() => {
   window.addEventListener("resize", onResize);
   // ▼ Recent table: only show selected columns
 const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
-const recentHeaders = useMemo(
-  () => recentVisibleIdxs.map(i => CONFIG.colMapping[i].header),
-  [recentVisibleIdxs]
-);
-  return () => window.removeEventListener("resize", onResize);
-}, []);
-
 
   // Default form values (manual-entry columns only)
   const defaultForm = () => ({
@@ -878,21 +871,24 @@ async function refresh() {
       <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            {recentHeaders.map(h => (
-              <th
-                key={h}
-                style={{
-                  textAlign: "left",
-                  padding: "10px 12px",
-                  color: "#555",
-                  borderBottom: "1px solid #eee",
-                  background: "rgba(255,255,255,0.45)",
-                  backdropFilter: "blur(4px)"
-                }}
-              >
-                {h}
-              </th>
-            ))}
+            {recentVisibleIdxs.map(i => {
+              const h = CONFIG.colMapping[i].header;
+              return (
+                <th
+                  key={h}
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    color: "#555",
+                    borderBottom: "1px solid #eee",
+                    background: "rgba(255,255,255,0.45)",
+                    backdropFilter: "blur(4px)"
+                  }}
+                >
+                  {h}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
