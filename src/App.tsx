@@ -84,6 +84,10 @@ async function getAccessToken() {
   const request = { scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"], account: accounts[0] };
   try { return (await msal.acquireTokenSilent(request)).accessToken; }
   catch { return (await msal.acquireTokenPopup({ scopes: request.scopes })).accessToken; }
+  catch {
+    return (await msal.acquireTokenPopup({
+    scopes: request.scopes,
+    redirectUri: CONFIG.redirectUri})).accessToken;
 }
 
 async function graphFetch(path, options = {}) {
@@ -284,6 +288,11 @@ export default function App() {
     setErr("");
     try {
       const res = await msal.loginPopup({ scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"], prompt: "select_account" });
+      const res = await msal.loginPopup({
+        scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+        prompt: "select_account",
+        redirectUri: CONFIG.redirectUri
+        });
       msal.setActiveAccount(res.account); setAccount(res.account);
       await Promise.all([refresh(), loadLists()]);
     } catch (e) { setErr(e.message); }
