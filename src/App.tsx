@@ -559,13 +559,13 @@ export default function App() {
       <style>{`	  
 		.field input, .field select, .field textarea { max-width: 320px; }  
         @media (max-width: 640px) {
-          .form-grid { grid-template-columns: 1fr !important; }
-          .mobile-card { border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 10px; background: rgba(255,255,255,0.5); }
-          .mobile-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-          .mobile-kv  { display: flex; justify-content: space-between; gap: 8px; }
-          .mobile-kv .k { color: #666; }
-          .mobile-kv .v { font-weight: 500; }
-        }
+			.form-grid {
+			grid-template-columns: repeat(2, minmax(140px, 1fr)) !important;
+			}
+			.field input, .field select, .field textarea {
+			max-width: 100%; /* allow full width of their grid cell */
+			}
+		}
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
