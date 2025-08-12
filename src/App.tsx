@@ -246,6 +246,8 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const msgRef = useRef<HTMLDivElement | null>(null);
+  const statusColumnIndex = CONFIG.colMapping.findIndex(
+    (c) => c.header.toLowerCase() === "status");
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -666,7 +668,7 @@ export default function App() {
         <Card tint="rgba(255,228,225,0.6)">
           <h3 style={{ marginTop: 0 }}>Preview (not saved yet)</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse"}}>
               <thead>
                 <tr>
                   {(preview.headers || []).map((h, idx) => (
@@ -692,7 +694,7 @@ export default function App() {
                     const header = (preview.headers && preview.headers[j]) || "";
                     const val = typeof prettyCell === "function" ? prettyCell(cell, header) : String(cell ?? "");
                     return (
-                      <td key={j} style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2", wordBreak: "break-word", maxWidth: 140, }}>
+                      <td key={j} style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2", wordBreak: "break-word", overflowWrap: "break-word", maxWidth: 140, }}>
                         {val}
                       </td>
                     );
@@ -718,7 +720,7 @@ export default function App() {
         {/* Desktop/tablet: compact table with only selected columns */}
         {!isMobile && (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse"}}>
               <thead>
                 <tr>
                   {recentVisibleIdxs.map((i) => {
@@ -745,6 +747,9 @@ export default function App() {
                 {recent.map((row, i) => (
                   <tr
                     key={i}
+					style={row[statusColumnIndex] == null || String(row[statusColumnIndex]).trim() === ""
+					  ? { background: "#ffffff" }
+					  : {}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.4)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
@@ -759,6 +764,7 @@ export default function App() {
                             padding: "10px 12px",
                             borderBottom: "1px solid #f2f2f2",
                             wordBreak: "break-word",
+							overflowWrap: "break-word",
 							maxWidth: 140,
                             ...cellStyle(header, cell),
                           }}
