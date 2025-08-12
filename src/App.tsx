@@ -243,6 +243,7 @@ export default function App() {
   const [listOptions, setListOptions] = useState<Record<string, string[]>>({});
   const [preview, setPreview] = useState<{ headers: string[]; values: string[] } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -397,7 +398,7 @@ export default function App() {
     }
   }
 
-	async function patchRowAtIndexInSession(index, rowValues, sessionId) {
+	/*async function patchRowAtIndexInSession(index, rowValues, sessionId) {
 	  const values = CONFIG.colMapping.map((c, i) =>
 		FORMULA_COLS.has(c.header) ? null : (rowValues[i] ?? "")
 	  );
@@ -407,7 +408,7 @@ export default function App() {
 		{ method: "PATCH", body: JSON.stringify({ values: [values] }) },
 		sessionId
 	  );
-	}
+	}*/
 
   async function handlePreview() {
     setErr("");
@@ -454,30 +455,65 @@ export default function App() {
   }
 
   async function signIn() {
-    setErr("");
-    try {
-      const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-      const request = {
-        scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
-        prompt: "select_account",
-        redirectUri: CONFIG.redirectUri,
-      };
-      if (isSafari) {
-        await msal.loginRedirect(request as any);
-        return;
-      }
-      const res = await msal.loginPopup(request as any);
-      if (res?.account) {
-        msal.setActiveAccount(res.account);
-        setAccount(res.account);
-        await Promise.all([refresh(), loadLists()]);
-      } else {
-        await msal.loginRedirect(request as any);
-      }
-    } catch (e: any) {
-      setErr(e.message || String(e));
+  if (authBusy) return;            // hard guard
+  setAuthBusy(true);
+  setErr("");
+
+  try {
+    await ensureMsalInitialized();
+
+    // If already signed in, just load data
+    const active = msal.getActiveAccount() || msal.getAllAccounts()[0];
+    if (active) {
+      msal.setActiveAccount(active);
+      setAccount(active);
+      await Promise.all([refresh(), loadLists()]);
+      return;
     }
+
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const request: any = {
+      scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+      prompt: "select_account",
+      redirectUri: CONFIG.redirectUri,
+    };
+
+    if (isSafari) {
+      await msal.loginRedirect(request);
+      return; // continues after redirect
+    }
+
+    // Try popup first
+    const res = await msal.loginPopup(request);
+    if (res?.account) {
+      msal.setActiveAccount(res.account);
+      setAccount(res.account);
+      await Promise.all([refresh(), loadLists()]);
+      return;
+    }
+  } catch (e: any) {
+    // If another interaction is already running, just ignore (prevents second window)
+    if (e?.errorCode === "interaction_in_progress") {
+      return;
+    }
+    // Popup blocked by browser? Fall back to redirect once.
+    if (e?.errorCode === "popup_window_error" || e?.errorCode === "popup_window_open_error") {
+      try {
+        await msal.loginRedirect({
+          scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+          redirectUri: CONFIG.redirectUri,
+        } as any);
+        return;
+      } catch (e2: any) {
+        setErr(e2.message || String(e2));
+      }
+    } else {
+      setErr(e?.message || String(e));
+    }
+  } finally {
+    setAuthBusy(false);
   }
+}
 
   async function signOut() {
     try {
@@ -517,7 +553,7 @@ export default function App() {
         }
       `}</style>
 
-      <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} />
+      <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
 
       {err && <Alert>{err}</Alert>}
       {notice && (
@@ -733,13 +769,12 @@ export default function App() {
 }
 
 // -------------------- UI helpers --------------------
-function Header({ account, onSignIn, onSignOut, onRefresh }: any) {
+function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-      <h2 style={{ margin: 0 }}>Trade Logger (Excel)</h2>
+    <div /* ... */>
       {!account ? (
-        <button onClick={onSignIn} style={btn()} {...btnHoverProps()}>
-          Sign in with Microsoft
+        <button onClick={onSignIn} disabled={authBusy} style={btn()} {...btnHoverProps()}>
+          {authBusy ? "Signing in…" : "Sign in with Microsoft"}
         </button>
       ) : (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
