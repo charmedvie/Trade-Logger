@@ -574,6 +574,140 @@ export default function App() {
 			grid-template-columns: 1fr;
 		  }
 		}
+		.input-wrap {
+		  position: relative;
+		  display: block;
+		  width: 100%;
+		}
+
+		.input {
+		  width: 100%;
+		  font-size: 15px;
+		  line-height: 1.2;
+		  padding: 14px 12px;               /* taller/touch friendly */
+		  border-radius: 12px;
+		  border: 1px solid transparent;    /* keeps layout consistent without a visible border */
+		  background: #f5f6f8;
+		  outline: none;
+		  transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
+		  -webkit-appearance: none; /* iOS */
+		}
+
+		.input:focus {
+		  background: #fff;
+		  border-color: rgba(0,0,0,0.08);
+		  box-shadow: 0 0 0 3px rgba(59,130,246,.15); /* subtle focus ring */
+		}
+
+		.input--select {
+		  padding-right: 32px;              /* space for chevron */
+		}
+
+		/* floating label */
+		.flabel {
+		  position: absolute;
+		  left: 12px;
+		  top: 50%;
+		  transform: translateY(-50%);
+		  font-size: 13px;
+		  color: #6b7280;                   /* gray-500 */
+		  pointer-events: none;
+		  transition: all .15s ease;
+		  background: transparent;
+		  padding: 0 4px;
+		}
+
+		/* When input has value or is focused → float the label */
+		.input:not(:placeholder-shown) ~ .flabel,
+		.input:focus ~ .flabel,
+		.input-wrap[data-has-value="true"] .flabel {
+		  top: -8px;
+		  transform: none;
+		  font-size: 11px;
+		  color: #374151;                   /* gray-700 */
+		  background: #fff0;                /* keep transparent since inputs are filled */
+		}
+
+		/* Make headings in recent bold (you already wanted this) */
+		.recent-head {
+		  font-weight: 700;
+		}
+
+		/* Make form field labels (the floating ones) more prominent by default on desktop too */
+		@media (min-width: 641px) {
+		  .flabel { font-size: 14px; }
+		}
+		.fi {
+		  position: relative;
+		  display: block;
+		}
+
+		.fi-label {
+		  position: absolute;
+		  left: 12px;
+		  top: 14px;
+		  font-size: 14px;            /* larger label on idle */
+		  color: #667085;
+		  transition: all .16s ease;
+		  pointer-events: none;
+		}
+
+		.fi .fi-input {
+		  width: 100%;
+		  background: #f6f7f9;        /* filled */
+		  border: 1px solid transparent;
+		  border-radius: 12px;
+		  padding: 14px 12px;         /* taller touch target */
+		  font-size: 16px;            /* larger text */
+		  line-height: 22px;
+		  outline: none;
+		  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
+		  appearance: none;
+		}
+
+		.fi .fi-input:focus {
+		  background: #fff;
+		  border-color: #cbd5e1;      /* subtle focus ring */
+		  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+		}
+
+		/* Float label when focused OR when input has value */
+		.fi:has(.fi-input:focus) .fi-label,
+		.fi[data-has-value="true"] .fi-label,
+		.fi .fi-input:not(:placeholder-shown) + .fi-label {
+		  top: -9px;
+		  left: 10px;
+		  font-size: 12px;
+		  padding: 0 6px;
+		  background: rgba(255,255,255,0.9); /* creates a pill behind the floated label */
+		  border-radius: 6px;
+		  color: #475467;
+		}
+
+		/* Selects: keep same size and filled look */
+		.fi select.fi-input {
+		  background-image: none;      /* let system draw caret; looks clean across platforms */
+		}
+
+		/* Make form labels (headings) bigger overall */
+		.fi-label {
+		  font-weight: 600;
+		}
+
+		/* Optional: stronger label size on desktop */
+		@media (min-width: 641px) {
+		  .fi-label { font-size: 15px; }
+		}
+
+		/* Ensure headings in Recent (from Excel) are bold */
+		.recent-head th {
+		  font-weight: 700;
+		}
+
+		/* Increase row readability slightly */
+		.recent-table td, .recent-table th {
+		  padding: 10px 12px;
+		}
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
@@ -609,10 +743,15 @@ export default function App() {
 			style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}
 		>
           {mainFields.map((c) => (
-            <Field key={c.header} label={c.header} full={c.header === "Notes"}>
-              {renderInput(c, form as any, onChange, listOptions)}
-            </Field>
-          ))}
+			  <Field
+				key={c.header}
+				label={c.header}
+				value={(form as any)[c.key]}
+				full={c.header === "Notes"}
+			  >
+				{renderInput(c, form as any, onChange, listOptions)}
+			  </Field>
+			))}
 
           {/* Trade Out toggle */}
           <div style={{ gridColumn: "1 / -1" }}>
@@ -641,7 +780,7 @@ export default function App() {
 
           {showOut &&
             outFields.map((c) => (
-              <Field key={c.header} label={c.header}>
+              <Field key={c.header} label={c.header}  value={(form as any)[c.key]}>
                 {renderInput(c, form as any, onChange, listOptions)}
               </Field>
             ))}
@@ -866,19 +1005,19 @@ function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
   );
 }
 
-function Field({ label, children, full }: any) {
+function Field({ label, children, value, full }: any) {
+  const hasValue =
+    value !== undefined &&
+    value !== null &&
+    String(value).trim() !== "";
+
   return (
     <label
-      className="field"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        minWidth: 0,               // ← prevents overlap
-        ...(full ? { gridColumn: "1 / -1" } : {})
-      }}
+      className="fi"
+      data-has-value={hasValue ? "true" : "false"}
+      style={full ? { gridColumn: "1 / -1" } : undefined}
     >
-      <span style={{ fontSize: 14, fontWeight: "600", color: "#555" }}>{label}</span>
+      <span className="fi-label">{label}</span>
       {children}
     </label>
   );
@@ -916,7 +1055,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
     const value = form[c.key] ?? "";
     if (!value && opts.length && c.header !== "Status" && form[c.key] === "") onChange(c.key, opts[0]);
     return (
-      <select value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()}>
+      <select className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()}>
         <option value=""></option>
         {opts.map((opt) => (
           <option key={opt} value={opt}>
@@ -928,7 +1067,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
   }
 
   if (/date/i.test(c.header)) {
-    return <input type="date" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()} />;
+    return <input type="date" className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()} />;
   }
   
   // Numeric-ish fields (allow negatives like -1.23)
@@ -938,6 +1077,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 		<input
 		  type="text"
 		  inputMode="decimal"
+		  className="fi-input"
 		  value={form[c.key] ?? ""}
 		  onChange={(e) => {
 			const v = e.target.value;
@@ -945,13 +1085,14 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 			if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
 		  }}
 		  style={inputStyle()}
-		  placeholder={c.header.includes("Avg price") ? "-1.23 OK" : ""}
+		  placeholder={c.header.includes("Avg price") ? "1.2 or -1.2" : ""}
 		/>
 	  );
 	}
 
   return (
     <input
+	  className="fi-input"
       value={form[c.key] || ""}
       onChange={(e) => onChange(c.key, c.header === "Ticker" ? e.target.value.toUpperCase() : e.target.value)}
       style={inputStyle()}
