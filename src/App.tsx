@@ -1,5 +1,5 @@
 // Trade Logger PWA – React single-file app (mobile-first)
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { PublicClientApplication } from "@azure/msal-browser";
 
 // -------------------- CONFIG --------------------
@@ -253,6 +253,15 @@ export default function App() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  
+  useEffect(() => {
+  if (err || notice) {
+    // after paint so the element exists
+    setTimeout(() => {
+      msgRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
+}, [err, notice]);
 
   // Defaults
   const defaultForm = () => ({
@@ -286,6 +295,7 @@ export default function App() {
   const OUT_FIELDS = useMemo(() => new Set(["Out date", "Status", "Exit price"]), []);
   const [showOut, setShowOut] = useState(false);
   const [notice, setNotice] = useState("");
+  const msgRef = useRef<HTMLDivElement | null>(null);
 
   // Init + load
   useEffect(() => {
@@ -554,8 +564,24 @@ export default function App() {
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
+		<div ref={msgRef}>
+		  {err && <Alert>{err}</Alert>}
 
-      {err && <Alert>{err}</Alert>}
+		  {notice && (
+			<div style={{
+			  background: "rgba(46, 204, 113, 0.15)",
+			  border: "1px solid rgba(46, 204, 113, 0.35)",
+			  color: "#1B5E20",
+			  padding: 10,
+			  borderRadius: 10,
+			  marginBottom: 8,
+			  backdropFilter: "blur(6px)"
+			}}>
+			  {notice}
+			</div>
+		  )}
+		</div>
+      /*{err && <Alert>{err}</Alert>}
       {notice && (
         <div
           style={{
@@ -570,7 +596,7 @@ export default function App() {
         >
           {notice}
         </div>
-      )}
+      )}*/
 
       <Card tint="rgba(224,255,255,0.6)">
         <h3 style={{ marginTop: 0 }}>Quick Add Trade</h3>
