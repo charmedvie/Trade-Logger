@@ -244,9 +244,12 @@ export default function App() {
   const [preview, setPreview] = useState<{ headers: string[]; values: string[] } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const msgRef = useRef<HTMLDivElement | null>(null);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
+
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= 640);
     onResize();
@@ -294,8 +297,6 @@ export default function App() {
 
   const OUT_FIELDS = useMemo(() => new Set(["Out date", "Status", "Exit price"]), []);
   const [showOut, setShowOut] = useState(false);
-  const [notice, setNotice] = useState("");
-  const msgRef = useRef<HTMLDivElement | null>(null);
 
   // Init + load
   useEffect(() => {
@@ -408,7 +409,7 @@ export default function App() {
     }
   }
 
-	/*async function patchRowAtIndexInSession(index, rowValues, sessionId) {
+	async function patchRowAtIndexInSession(index, rowValues, sessionId) {
 	  const values = CONFIG.colMapping.map((c, i) =>
 		FORMULA_COLS.has(c.header) ? null : (rowValues[i] ?? "")
 	  );
@@ -418,7 +419,7 @@ export default function App() {
 		{ method: "PATCH", body: JSON.stringify({ values: [values] }) },
 		sessionId
 	  );
-	}*/
+	}
 
   async function handlePreview() {
     setErr("");
