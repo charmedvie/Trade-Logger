@@ -962,10 +962,10 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 
 function inputStyle() {
   return {
-    width: "100%",
+    width: "80%",
     padding: "10px 8px",
-    border: "1px solid #ccc",
-    borderRadius: 10,
+    //border: "1px solid #ccc",
+   // borderRadius: 10,
     fontSize: 14,
 	 minWidth: 0
   };
