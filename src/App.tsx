@@ -591,23 +591,7 @@ export default function App() {
 			</div>
 		  )}
 		</div>
-      /*{err && <Alert>{err}</Alert>}
-      {notice && (
-        <div
-          style={{
-            background: "rgba(46, 204, 113, 0.15)",
-            border: "1px solid rgba(46, 204, 113, 0.35)",
-            color: "#1B5E20",
-            padding: 10,
-            borderRadius: 10,
-            marginBottom: 8,
-            backdropFilter: "blur(6px)",
-          }}
-        >
-          {notice}
-        </div>
-      )}*/
-
+     
       <Card tint="rgba(224,255,255,0.6)">
         <h3 style={{ marginTop: 0 }}>Quick Add Trade</h3>
         <form
@@ -748,7 +732,7 @@ export default function App() {
 				  </tr>
 				</thead>
 				<tbody>
-				  {recentData.map((row, i) => {
+				  {recent.map((row, i) => {
 					const isBlankStatus =
 					  statusColumnIndex >= 0 &&
 					  (row[statusColumnIndex] == null ||
@@ -780,6 +764,7 @@ export default function App() {
 				</tbody>
 			  </table>
 			</div>
+		)}
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
         {isMobile && (
