@@ -556,7 +556,8 @@ export default function App() {
           "linear-gradient(135deg, rgba(255,240,245,0.8) 0%, rgba(240,255,250,0.8) 33%, rgba(240,248,255,0.8) 66%, rgba(255,250,240,0.8) 100%)",
       }}
     >
-      <style>{`
+      <style>{`	  
+		.field input, .field select, .field textarea { max-width: 320px; }  
         @media (max-width: 640px) {
           .form-grid { grid-template-columns: 1fr !important; }
           .mobile-card { border: 1px solid rgba(0,0,0,0.06); border-radius: 12px; padding: 10px; background: rgba(255,255,255,0.5); }
@@ -768,28 +769,37 @@ export default function App() {
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
         {isMobile && (
-          <div style={{ display: "grid", gap: 8 }}>
-            {recent.map((row, i) => (
-              <div key={i} className="mobile-card">
-                <div className="mobile-row">
-                  {recentVisibleIdxs.map((j) => {
-                    const header = CONFIG.colMapping[j].header;
-                    const cell = row[j];
-                    const val = prettyCell(cell, header);
-                    return (
-                      <div key={j} className="mobile-kv">
-                        <span className="k">{header}</span>
-                        <span className="v" style={cellStyle(header, cell)}>
-                          {val}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+		  <div style={{ display: "grid", gap: 8 }}>
+			{recent.map((row, i) => {
+			  const isBlankStatus =
+				statusColumnIndex >= 0 &&
+				(row[statusColumnIndex] == null ||
+				 String(row[statusColumnIndex]).trim() === "");
+
+			  return (
+				<div
+				  key={i}
+				  className="mobile-card"
+				  style={isBlankStatus ? { background: "#ffffff" } : undefined}
+				>
+				  <div className="mobile-row">
+					{recentVisibleIdxs.map((j) => {
+					  const header = CONFIG.colMapping[j].header;
+					  const cell = row[j];
+					  const val = prettyCell(cell, header);
+					  return (
+						<div key={j} className="mobile-kv">
+						  <span className="k">{header}</span>
+						  <span className="v" style={cellStyle(header, cell)}>{val}</span>
+						</div>
+					  );
+					})}
+				  </div>
+				</div>
+			  );
+			})}
+		  </div>
+		)}
       </Card>
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
@@ -824,7 +834,16 @@ function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
 
 function Field({ label, children, full }: any) {
   return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4, ...(full ? { gridColumn: "1 / -1" } : {}) }}>
+    <label
+      className="field"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 4,
+        minWidth: 0,               // ← prevents overlap
+        ...(full ? { gridColumn: "1 / -1" } : {})
+      }}
+    >
       <span style={{ fontSize: 12, color: "#555" }}>{label}</span>
       {children}
     </label>
@@ -909,11 +928,12 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 
 function inputStyle() {
   return {
-    width: "100%",
+    width: "70%",
     padding: "6px 8px",
     border: "1px solid #ccc",
     borderRadius: 10,
-    fontSize: 14
+    fontSize: 14,
+	 minWidth: 0
   };
 }
 
