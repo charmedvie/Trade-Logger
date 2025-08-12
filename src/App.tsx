@@ -397,6 +397,18 @@ export default function App() {
     }
   }
 
+	async function patchRowAtIndexInSession(index, rowValues, sessionId) {
+	  const values = CONFIG.colMapping.map((c, i) =>
+		FORMULA_COLS.has(c.header) ? null : (rowValues[i] ?? "")
+	  );
+	  const path = `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/itemAt(index=${index})/range`;
+	  return graphFetchSession(
+		path,
+		{ method: "PATCH", body: JSON.stringify({ values: [values] }) },
+		sessionId
+	  );
+	}
+
   async function handlePreview() {
     setErr("");
     setPreview(null);
@@ -799,17 +811,25 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
   if (/date/i.test(c.header)) {
     return <input type="date" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()} />;
   }
-
-  if (/price|fees|strike|exit|proceeds|p&l|roi/i.test(c.header)) {
-    return (
-      <input
-        inputMode="decimal"
-        value={form[c.key] || ""}
-        onChange={(e) => onChange(c.key, e.target.value)}
-        style={inputStyle()}
-      />
-    );
-  }
+  
+  // Numeric-ish fields (allow negatives like -1.23)
+  
+	 if (/price|fees|strike|exit|proceeds|p&l|roi/i.test(c.header)) {
+	  return (
+		<input
+		  type="text"
+		  inputMode="decimal"
+		  value={form[c.key] ?? ""}
+		  onChange={(e) => {
+			const v = e.target.value;
+			// allow: "", "-", "-.", ".", "-1", "1", "1.2", "-1.2"
+			if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
+		  }}
+		  style={inputStyle()}
+		  placeholder={c.header.includes("Avg price") ? "-1.23 OK" : ""}
+		/>
+	  );
+	}
 
   return (
     <input
