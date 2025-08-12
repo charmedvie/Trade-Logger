@@ -557,214 +557,44 @@ export default function App() {
       }}
     >
       <style>{`	  
-		.field input, .field select, .field textarea { max-width: 320px; } 
-		.k {font-weight: bold;}		
-        @media (max-width: 640px) {
-		  .form-grid {
-			grid-template-columns: repeat(2, minmax(140px, 1fr));
-		  }
-		  .field input, .field select, .field textarea {
-			max-width: 100%;
-		  }
-		}
+		/* GRID: two columns on phones, one column on very small screens */
+			.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px;row-gap:12px}
+			@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
 
-		/* Drop to single column on extra-small screens */
-		@media (max-width: 400px) {
-		  .form-grid {
-			grid-template-columns: 1fr;
-		  }
-		}
-		.input-wrap {
-		  position: relative;
-		  display: block;
-		  width: 100%;
-		}
+			/* Recent (mobile) title text bold */
+			.k{font-weight:700}
 
-		.input {
-		  width: 100%;
-		  font-size: 15px;
-		  line-height: 1.2;
-		  padding: 14px 12px;               /* taller/touch friendly */
-		  border-radius: 12px;
-		  border: 1px solid transparent;    /* keeps layout consistent without a visible border */
-		  background: #f5f6f8;
-		  outline: none;
-		  transition: background .15s ease, box-shadow .15s ease, border-color .15s ease;
-		  -webkit-appearance: none; /* iOS */
-		}
+			/* FIELD + FLOATING LABEL */
+			.field{position:relative;display:block}
+			.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
+			.field-label{
+			  position:absolute;left:12px;top:14px;
+			  font-size:14px;font-weight:600;color:#667085;
+			  background:#fff;padding:0 6px;border-radius:6px;
+			  pointer-events:none;transition:all .15s ease
+			}
 
-		.input:focus {
-		  background: #fff;
-		  border-color: rgba(0,0,0,0.08);
-		  box-shadow: 0 0 0 3px rgba(59,130,246,.15); /* subtle focus ring */
-		}
+			/* INPUTS (white, consistent height) */
+			.fi-input{
+			  width:100%;box-sizing:border-box;appearance:none;
+			  background:#fff;color:#0f172a;
+			  border:1px solid #e5e7eb;border-radius:12px;
+			  height:48px;padding:12px 12px;font-size:16px;line-height:22px;
+			  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
+			}
+			.fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
 
-		.input--select {
-		  padding-right: 32px;              /* space for chevron */
-		}
+			/* Select caret spacing */
+			.fi-input.is-select{padding-right:34px}
 
-		/* floating label */
-		.flabel {
-		  position: absolute;
-		  left: 12px;
-		  top: 50%;
-		  transform: translateY(-50%);
-		  font-size: 13px;
-		  color: #6b7280;                   /* gray-500 */
-		  pointer-events: none;
-		  transition: all .15s ease;
-		  background: transparent;
-		  padding: 0 4px;
-		}
+			/* Float label on focus or when input has content */
+			.fi-input:focus + .field-label,
+			.fi-input:not(:placeholder-shown) + .field-label,
+			.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
 
-		/* When input has value or is focused → float the label */
-		.input:not(:placeholder-shown) ~ .flabel,
-		.input:focus ~ .flabel,
-		.input-wrap[data-has-value="true"] .flabel {
-		  top: -8px;
-		  transform: none;
-		  font-size: 11px;
-		  color: #374151;                   /* gray-700 */
-		  background: #fff0;                /* keep transparent since inputs are filled */
-		}
+			/* Table headings bold */
+			.recent-table th{font-weight:700}
 
-		/* Make headings in recent bold (you already wanted this) */
-		.recent-head {
-		  font-weight: 700;
-		}
-
-		/* Make form field labels (the floating ones) more prominent by default on desktop too */
-		@media (min-width: 641px) {
-		  .flabel { font-size: 14px; }
-		}
-		.fi {
-		  position: relative;
-		  display: block;
-		}
-
-		.fi-label {
-		  position: absolute;
-		  left: 12px;
-		  top: 14px;
-		  font-size: 14px;            /* larger label on idle */
-		  color: #667085;
-		  transition: all .16s ease;
-		  pointer-events: none;
-		}
-
-		.fi .fi-input {
-		  width: 100%;
-		  background: #f6f7f9;        /* filled */
-		  border: 1px solid transparent;
-		  border-radius: 12px;
-		  padding: 14px 12px;         /* taller touch target */
-		  font-size: 16px;            /* larger text */
-		  line-height: 22px;
-		  outline: none;
-		  transition: background .16s ease, border-color .16s ease, box-shadow .16s ease;
-		  appearance: none;
-		}
-
-		.fi .fi-input:focus {
-		  background: #fff;
-		  border-color: #cbd5e1;      /* subtle focus ring */
-		  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
-		}
-
-		/* Float label when focused OR when input has value */
-		.fi:has(.fi-input:focus) .fi-label,
-		.fi[data-has-value="true"] .fi-label,
-		.fi .fi-input:not(:placeholder-shown) + .fi-label {
-		  top: -9px;
-		  left: 10px;
-		  font-size: 12px;
-		  padding: 0 6px;
-		  background: rgba(255,255,255,0.9); /* creates a pill behind the floated label */
-		  border-radius: 6px;
-		  color: #475467;
-		}
-
-		/* Selects: keep same size and filled look */
-		.fi select.fi-input {
-		  background-image: none;      /* let system draw caret; looks clean across platforms */
-		}
-
-		/* Make form labels (headings) bigger overall */
-		.fi-label {
-		  font-weight: 600;
-		}
-
-		/* Optional: stronger label size on desktop */
-		@media (min-width: 641px) {
-		  .fi-label { font-size: 15px; }
-		}
-
-		/* Ensure headings in Recent (from Excel) are bold */
-		.recent-head th {
-		  font-weight: 700;
-		}
-
-		/* Increase row readability slightly */
-		.recent-table td, .recent-table th {
-		  padding: 10px 12px;
-		}
-		.field {
-		  position: relative;
-		  display: block;
-		}
-
-		.fi-input {
-		  width: 100%;
-		  background: #ffffff;                 /* WHITE background */
-		  border: 1px solid #e5e7eb;           /* subtle border */
-		  border-radius: 12px;
-		  height: 48px;                        /* taller click target */
-		  padding: 12px 12px;
-		  font-size: 16px;
-		  line-height: 22px;
-		  outline: none;
-		  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-		  appearance: none;
-		  box-sizing: border-box;
-		}
-
-		.fi-input:focus {
-		  border-color: #cbd5e1;
-		  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
-		  background: #ffffff;
-		}
-
-		/* Label sits over the input, then floats up */
-		.field-label {
-		  position: absolute;
-		  left: 12px;
-		  top: 14px;
-		  font-size: 14px;
-		  color: #667085;
-		  background: #ffffff;                 /* white pill behind text */
-		  padding: 0 6px;
-		  border-radius: 6px;
-		  pointer-events: none;
-		  transform-origin: left top;
-		  transition: all .15s ease;
-		}
-
-		/* Float when input focused or has value (selects rely on .has-value) */
-		.fi-input:focus + .field-label,
-		.field.has-value .field-label,
-		.fi-input:not(:placeholder-shown) + .field-label {
-		  top: -8px;
-		  font-size: 12px;
-		  color: #475467;
-		}
-
-		/* Slightly larger label on desktop */
-		@media (min-width: 768px) {
-		  .field-label { font-size: 15px; }
-		}
-
-		/* Make form label text bolder overall */
-		.field-label { font-weight: 600; }
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
@@ -1111,7 +941,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
     const value = form[c.key] ?? "";
     if (!value && opts.length && c.header !== "Status" && form[c.key] === "") onChange(c.key, opts[0]);
     return (
-      <select className="fi-input is-select" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()}>
+      <select className="fi-input is-select" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)}>
         <option value=""></option>
         {opts.map((opt) => (
           <option key={opt} value={opt}>
@@ -1123,7 +953,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
   }
 
   if (/date/i.test(c.header)) {
-    return <input type="date" className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()} />;
+    return <input type="date" className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} />;
   }
   
   // Numeric-ish fields (allow negatives like -1.23)
@@ -1139,8 +969,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 			const v = e.target.value;
 			// allow: "", "-", "-.", ".", "-1", "1", "1.2", "-1.2"
 			if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
-		  }}
-		  style={inputStyle()}
+		  }}		  
 		  placeholder={c.header.includes("Avg price") ? "1.2 or -1.2" : ""}
 		/>
 	  );
@@ -1151,7 +980,6 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 	  className="fi-input"
       value={form[c.key] || ""}
       onChange={(e) => onChange(c.key, c.header === "Ticker" ? e.target.value.toUpperCase() : e.target.value)}
-      style={inputStyle()}
       placeholder={c.header === "Ticker" ? "AMZN" : ""}
     />
   );
