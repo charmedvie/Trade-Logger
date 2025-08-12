@@ -720,65 +720,66 @@ export default function App() {
         {/* Desktop/tablet: compact table with only selected columns */}
         {!isMobile && (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse"}}>
-              <thead>
-                <tr>
-                  {recentVisibleIdxs.map((i) => {
-                    const h = CONFIG.colMapping[i].header;
-                    return (
-                      <th
-                        key={h}
-                        style={{
-                          textAlign: "left",
-                          padding: "10px 12px",
-                          color: "#555",
-                          borderBottom: "1px solid #eee",
-                          background: "rgba(255,255,255,0.45)",
-                          backdropFilter: "blur(4px)",
-                        }}
-                      >
-                        {h}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((row, i) => (
-                  <tr
-                    key={i}
-					style={row[statusColumnIndex] == null || String(row[statusColumnIndex]).trim() === ""
-					  ? { background: "#ffffff" }
-					  : {}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.4)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    {recentVisibleIdxs.map((j) => {
-                      const header = CONFIG.colMapping[j].header;
-                      const cell = row[j];
-                      const val = prettyCell(cell, header);
-                      return (
-                        <td
-                          key={j}
-                          style={{
-                            padding: "10px 12px",
-                            borderBottom: "1px solid #f2f2f2",
-                            wordBreak: "break-word",
-							overflowWrap: "break-word",
-							maxWidth: 140,
-                            ...cellStyle(header, cell),
-                          }}
-                        >
-                          {val}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+			  <table
+				style={{
+				  width: "100%",
+				  fontSize: 14,
+				  borderCollapse: "collapse"
+				}}
+			  >
+				<thead>
+				  <tr>
+					{headers.map((header) => (
+					  <th
+						key={header}
+						style={{
+						  textAlign: "left",
+						  padding: "10px 12px",
+						  borderBottom: "2px solid #ddd",
+						  position: "sticky",
+						  top: 0,
+						  background: "#f9f9f9",
+						  zIndex: 1
+						}}
+					  >
+						{header}
+					  </th>
+					))}
+				  </tr>
+				</thead>
+				<tbody>
+				  {recentData.map((row, i) => {
+					const isBlankStatus =
+					  statusColumnIndex >= 0 &&
+					  (row[statusColumnIndex] == null ||
+						String(row[statusColumnIndex]).trim() === "");
+
+					return (
+					  <tr
+						key={i}
+						style={isBlankStatus ? { background: "#ffffff" } : {}}
+					  >
+						{row.map((cell, j) => (
+						  <td
+							key={j}
+							style={{
+							  padding: "10px 12px",
+							  borderBottom: "1px solid #f2f2f2",
+							  wordBreak: "break-word",
+							  overflowWrap: "break-word",
+							  maxWidth: 140,
+							  ...cellStyle(headers[j], cell)
+							}}
+						  >
+							{cell}
+						  </td>
+						))}
+					  </tr>
+					);
+				  })}
+				</tbody>
+			  </table>
+			</div>
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
         {isMobile && (
