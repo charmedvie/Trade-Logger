@@ -797,21 +797,36 @@ export default function App() {
 						background: isBlankStatus ? "#ffffff" : undefined
 					  }}
 					>
-					  <div className="mobile-row">
-						{recentVisibleIdxs.map((j) => {
-						  const header = CONFIG.colMapping[j].header;
-						  const cell = row[j];
-						  const val = prettyCell(cell, header);
-						  return (
-							<div key={j} className="mobile-kv">
-							  <span className="k">{header}</span>
-							  <span className="v" style={cellStyle(header, cell)}>
-								{val}
-							  </span>
-							</div>
-						  );
-						})}
-					  </div>
+					  <div
+						  className="mobile-row"
+						  style={{
+							display: "grid",
+							gridTemplateColumns: "1fr 1fr", // two columns
+							gap: "8px"
+						  }}
+						>
+						  {recentVisibleIdxs.map((j) => {
+							const header = CONFIG.colMapping[j].header;
+							const cell = row[j];
+							const val = prettyCell(cell, header);
+							return (
+							  <div
+								key={j}
+								className="mobile-kv"
+								style={{
+								  display: "flex",
+								  flexDirection: "column",
+								  gap: 2
+								}}
+							  >
+								<span className="k">{header}</span>
+								<span className="v" style={cellStyle(header, cell)}>
+								  {val}
+								</span>
+							  </div>
+							);
+						  })}
+						</div>
 					</div>
 				  );
 				})}
