@@ -600,7 +600,11 @@ export default function App() {
 
       <Card tint="rgba(224,255,255,0.6)">
         <h3 style={{ marginTop: 0 }}>Quick Add Trade</h3>
-        <form onSubmit={save} className="form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <form
+			onSubmit={save}
+			className="form-grid"
+			style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}
+		>
           {mainFields.map((c) => (
             <Field key={c.header} label={c.header} full={c.header === "Notes"}>
               {renderInput(c, form as any, onChange, listOptions)}
@@ -654,7 +658,7 @@ export default function App() {
         <Card tint="rgba(255,228,225,0.6)">
           <h3 style={{ marginTop: 0 }}>Preview (not saved yet)</h3>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr>
                   {(preview.headers || []).map((h, idx) => (
@@ -680,7 +684,7 @@ export default function App() {
                     const header = (preview.headers && preview.headers[j]) || "";
                     const val = typeof prettyCell === "function" ? prettyCell(cell, header) : String(cell ?? "");
                     return (
-                      <td key={j} style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2", whiteSpace: "nowrap" }}>
+                      <td key={j} style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2", wordBreak: "break-word", maxWidth: 140, }}>
                         {val}
                       </td>
                     );
@@ -706,7 +710,7 @@ export default function App() {
         {/* Desktop/tablet: compact table with only selected columns */}
         {!isMobile && (
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse", tableLayout: "fixed" }}>
               <thead>
                 <tr>
                   {recentVisibleIdxs.map((i) => {
@@ -746,7 +750,8 @@ export default function App() {
                           style={{
                             padding: "10px 12px",
                             borderBottom: "1px solid #f2f2f2",
-                            whiteSpace: "nowrap",
+                            wordBreak: "break-word",
+							maxWidth: 140,
                             ...cellStyle(header, cell),
                           }}
                         >
@@ -903,7 +908,13 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 }
 
 function inputStyle() {
-  return { padding: "8px 10px", border: "1px solid #ccc", borderRadius: 10, fontSize: 14 };
+  return {
+    width: "100%",
+    padding: "6px 8px",
+    border: "1px solid #ccc",
+    borderRadius: 10,
+    fontSize: 14
+  };
 }
 
 function btn(bg = "linear-gradient(135deg, #ffd6e8, #d6f0ff)", color = "#333") {
@@ -980,6 +991,11 @@ function cellStyle(header: string, raw: any) {
     if (n < 0) return { background: "rgba(239,68,68,0.20)" };
     return {};
   }
+  if (header.toLowerCase() === "status") {
+	  if (raw == null || String(raw).trim() === "") {
+		return { background: "#ffffff" }; // blank → white
+	  }
+	}
   if (h === "roi" || h === "roi cb") {
     const p = parsePct(raw);
     if (p == null) return {};
