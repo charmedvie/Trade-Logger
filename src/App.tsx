@@ -557,7 +557,8 @@ export default function App() {
       }}
     >
       <style>{`	  
-		.field input, .field select, .field textarea { max-width: 320px; }  
+		.field input, .field select, .field textarea { max-width: 320px; } 
+		.k {font-weight: bold;}		
         @media (max-width: 640px) {
 		  .form-grid {
 			grid-template-columns: repeat(2, minmax(140px, 1fr));
@@ -877,7 +878,7 @@ function Field({ label, children, full }: any) {
         ...(full ? { gridColumn: "1 / -1" } : {})
       }}
     >
-      <span style={{ fontSize: 12, color: "#555" }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: "600", color: "#555" }}>{label}</span>
       {children}
     </label>
   );
@@ -961,8 +962,8 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 
 function inputStyle() {
   return {
-    width: "70%",
-    padding: "6px 8px",
+    width: "100%",
+    padding: "10px 8px",
     border: "1px solid #ccc",
     borderRadius: 10,
     fontSize: 14,
