@@ -262,6 +262,7 @@ export default function App() {
     // after paint so the element exists
     setTimeout(() => {
       msgRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+	  msgRef.current?.focus({ preventScroll: true });
     }, 0);
   }
 }, [err, notice]);
@@ -565,7 +566,13 @@ export default function App() {
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
-		<div ref={msgRef}>
+		<div
+		  ref={msgRef}
+		  tabIndex={-1}
+		  aria-live="assertive"
+		  aria-atomic="true"
+		  style={{ outline: "none" }}
+		>
 		  {err && <Alert>{err}</Alert>}
 
 		  {notice && (
