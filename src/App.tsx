@@ -556,46 +556,45 @@ export default function App() {
           "linear-gradient(135deg, rgba(255,240,245,0.8) 0%, rgba(240,255,250,0.8) 33%, rgba(240,248,255,0.8) 66%, rgba(255,250,240,0.8) 100%)",
       }}
     >
-      <style>{`	  
-		/* GRID: two columns on phones, one column on very small screens */
-			.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px;row-gap:12px}
-			@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
+      <style>{\` 
+		/* --- FORM GRID --- */
+		.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px;row-gap:12px}
+		@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
 
-			/* Recent (mobile) title text bold */
-			.k{font-weight:700}
+		/* Recent mobile headings bold */
+		.k{font-weight:700}
 
-			/* FIELD + FLOATING LABEL */
-			.field{position:relative;display:block}
-			.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
-			.field-label{
-			  position:absolute;left:12px;top:14px;
-			  font-size:14px;font-weight:600;color:#667085;
-			  background:#fff;padding:0 6px;border-radius:6px;
-			  pointer-events:none;transition:all .15s ease
-			}
+		/* --- FIELD + FLOATING LABEL --- */
+		.field{position:relative;display:block}
+		.field-label{
+		  position:absolute;left:12px;top:14px;
+		  font-size:14px;font-weight:600;color:#667085;
+		  background:#fff;padding:0 6px;border-radius:6px;
+		  pointer-events:none;transition:all .15s ease
+		}
+		.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
 
-			/* INPUTS (white, consistent height) */
-			.fi-input{
-			  width:100%;box-sizing:border-box;appearance:none;
-			  background:#fff;color:#0f172a;
-			  border:1px solid #e5e7eb;border-radius:12px;
-			  height:48px;padding:12px 12px;font-size:16px;line-height:22px;
-			  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
-			}
-			.fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+		/* Float on focus or when not placeholder-shown */
+		.field > .fi-input:focus + .field-label,
+		.field > .fi-input:not(:placeholder-shown) + .field-label,
+		.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
 
-			/* Select caret spacing */
-			.fi-input.is-select{padding-right:34px}
+		/* --- INPUTS (white, consistent height) --- */
+		.field > .fi-input{
+		  width:100%;box-sizing:border-box;appearance:none;
+		  background:#fff !important;color:#0f172a;
+		  border:1px solid #e5e7eb;border-radius:12px;
+		  height:48px !important;padding:12px 12px !important;
+		  font-size:16px;line-height:22px;
+		  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
+		}
+		.field > .fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+		.field > .fi-input.is-select{padding-right:34px}
 
-			/* Float label on focus or when input has content */
-			.fi-input:focus + .field-label,
-			.fi-input:not(:placeholder-shown) + .field-label,
-			.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
-
-			/* Table headings bold */
-			.recent-table th{font-weight:700}
-
-      `}</style>
+		/* Recent table headings bold */
+		.recent-table th{font-weight:700}
+		`}
+		</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
 		<div
@@ -985,7 +984,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
   );
 }
 
-function inputStyle() {
+/*function inputStyle() {
   return {
     width: "80%"
    //padding: "10px 8px",
@@ -994,7 +993,7 @@ function inputStyle() {
    // fontSize: 14,
 	// minWidth: 0
   };
-}
+}*/
 
 function btn(bg = "linear-gradient(135deg, #ffd6e8, #d6f0ff)", color = "#333") {
   return {
