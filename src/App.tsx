@@ -559,12 +559,19 @@ export default function App() {
       <style>{`	  
 		.field input, .field select, .field textarea { max-width: 320px; }  
         @media (max-width: 640px) {
-			.form-grid {
-			grid-template-columns: repeat(2, minmax(140px, 1fr)) !important;
-			}
-			.field input, .field select, .field textarea {
-			max-width: 100%; /* allow full width of their grid cell */
-			}
+		  .form-grid {
+			grid-template-columns: repeat(2, minmax(140px, 1fr));
+		  }
+		  .field input, .field select, .field textarea {
+			max-width: 100%;
+		  }
+		}
+
+		/* Drop to single column on extra-small screens */
+		@media (max-width: 400px) {
+		  .form-grid {
+			grid-template-columns: 1fr;
+		  }
 		}
       `}</style>
 
@@ -769,37 +776,48 @@ export default function App() {
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
         {isMobile && (
-		  <div style={{ display: "grid", gap: 8 }}>
-			{recent.map((row, i) => {
-			  const isBlankStatus =
-				statusColumnIndex >= 0 &&
-				(row[statusColumnIndex] == null ||
-				 String(row[statusColumnIndex]).trim() === "");
+			  <div
+				style={{
+				  display: "grid",
+				  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+				  gap: 8
+				}}
+			  >
+				{recent.map((row, i) => {
+				  const isBlankStatus =
+					statusColumnIndex >= 0 &&
+					(row[statusColumnIndex] == null ||
+					  String(row[statusColumnIndex]).trim() === "");
 
-			  return (
-				<div
-				  key={i}
-				  className="mobile-card"
-				  style={isBlankStatus ? { background: "#ffffff" } : undefined}
-				>
-				  <div className="mobile-row">
-					{recentVisibleIdxs.map((j) => {
-					  const header = CONFIG.colMapping[j].header;
-					  const cell = row[j];
-					  const val = prettyCell(cell, header);
-					  return (
-						<div key={j} className="mobile-kv">
-						  <span className="k">{header}</span>
-						  <span className="v" style={cellStyle(header, cell)}>{val}</span>
-						</div>
-					  );
-					})}
-				  </div>
-				</div>
-			  );
-			})}
-		  </div>
-		)}
+				  return (
+					<div
+					  key={i}
+					  className="mobile-card"
+					  style={{
+						background: isBlankStatus ? "#ffffff" : undefined
+					  }}
+					>
+					  <div className="mobile-row">
+						{recentVisibleIdxs.map((j) => {
+						  const header = CONFIG.colMapping[j].header;
+						  const cell = row[j];
+						  const val = prettyCell(cell, header);
+						  return (
+							<div key={j} className="mobile-kv">
+							  <span className="k">{header}</span>
+							  <span className="v" style={cellStyle(header, cell)}>
+								{val}
+							  </span>
+							</div>
+						  );
+						})}
+					  </div>
+					</div>
+				  );
+				})}
+			  </div>
+			)}
+
       </Card>
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
