@@ -708,6 +708,63 @@ export default function App() {
 		.recent-table td, .recent-table th {
 		  padding: 10px 12px;
 		}
+		.field {
+		  position: relative;
+		  display: block;
+		}
+
+		.fi-input {
+		  width: 100%;
+		  background: #ffffff;                 /* WHITE background */
+		  border: 1px solid #e5e7eb;           /* subtle border */
+		  border-radius: 12px;
+		  height: 48px;                        /* taller click target */
+		  padding: 12px 12px;
+		  font-size: 16px;
+		  line-height: 22px;
+		  outline: none;
+		  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+		  appearance: none;
+		  box-sizing: border-box;
+		}
+
+		.fi-input:focus {
+		  border-color: #cbd5e1;
+		  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+		  background: #ffffff;
+		}
+
+		/* Label sits over the input, then floats up */
+		.field-label {
+		  position: absolute;
+		  left: 12px;
+		  top: 14px;
+		  font-size: 14px;
+		  color: #667085;
+		  background: #ffffff;                 /* white pill behind text */
+		  padding: 0 6px;
+		  border-radius: 6px;
+		  pointer-events: none;
+		  transform-origin: left top;
+		  transition: all .15s ease;
+		}
+
+		/* Float when input focused or has value (selects rely on .has-value) */
+		.fi-input:focus + .field-label,
+		.field.has-value .field-label,
+		.fi-input:not(:placeholder-shown) + .field-label {
+		  top: -8px;
+		  font-size: 12px;
+		  color: #475467;
+		}
+
+		/* Slightly larger label on desktop */
+		@media (min-width: 768px) {
+		  .field-label { font-size: 15px; }
+		}
+
+		/* Make form label text bolder overall */
+		.field-label { font-weight: 600; }
       `}</style>
 
       <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
@@ -1012,14 +1069,13 @@ function Field({ label, children, value, full }: any) {
     String(value).trim() !== "";
 
   return (
-    <label
-      className="fi"
-      data-has-value={hasValue ? "true" : "false"}
+    <div
+      className={`field ${hasValue ? "has-value" : ""}`}
       style={full ? { gridColumn: "1 / -1" } : undefined}
     >
-      <span className="fi-label">{label}</span>
       {children}
-    </label>
+      <span className="field-label">{label}</span>
+    </div>
   );
 }
 
@@ -1055,7 +1111,7 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
     const value = form[c.key] ?? "";
     if (!value && opts.length && c.header !== "Status" && form[c.key] === "") onChange(c.key, opts[0]);
     return (
-      <select className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()}>
+      <select className="fi-input is-select" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} style={inputStyle()}>
         <option value=""></option>
         {opts.map((opt) => (
           <option key={opt} value={opt}>
@@ -1103,12 +1159,12 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 
 function inputStyle() {
   return {
-    width: "80%",
-    padding: "10px 8px",
+    width: "80%"
+   //padding: "10px 8px",
     //border: "1px solid #ccc",
    // borderRadius: 10,
-    fontSize: 14,
-	 minWidth: 0
+   // fontSize: 14,
+	// minWidth: 0
   };
 }
 
