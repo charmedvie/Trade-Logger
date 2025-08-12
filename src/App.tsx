@@ -556,7 +556,7 @@ export default function App() {
           "linear-gradient(135deg, rgba(255,240,245,0.8) 0%, rgba(240,255,250,0.8) 33%, rgba(240,248,255,0.8) 66%, rgba(255,250,240,0.8) 100%)",
       }}
     >
-      <style>{\` 
+      <style>{` 
 		/* --- FORM GRID --- */
 		.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px;row-gap:12px}
 		@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
