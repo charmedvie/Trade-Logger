@@ -254,7 +254,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [listOptions, setListOptions] = useState<Record<string, string[]>>({});
-  const [preview, setPreview] = useState<{ headers: string[]; values: string[] } | null>(null);
+  const [preview, setPreview] = useState<{ headers: string[]; values: any[] } | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -495,9 +495,11 @@ export default function App() {
         row = (recent.value || [])[0]?.values?.[0] || [];
       }
 
-      const headers = CONFIG.colMapping.map((c) => c.header);
-      const valuesDisp = (row || []).map((v) => String(v ?? ""));
-      setPreview({ headers, values: valuesDisp });
+     const headers = CONFIG.colMapping.map((c) => c.header);
+	// keep raw values (numbers stay numbers so Excel date serials can be recognized)
+	const valuesRaw = (row || []).map((v) => (v === undefined ? null : v));
+	setPreview({ headers, values: valuesRaw });
+
     } catch (e: any) {
       setErr(String(e.message || e));
     } finally {
