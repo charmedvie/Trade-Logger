@@ -289,6 +289,15 @@ export default function App() {
   }, []);
   
   useEffect(() => {
+  if (editRow) {
+    // scroll the editor card into view
+    const el = document.getElementById("edit-modal");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}, [editRow]);
+
+  
+  useEffect(() => {
   if (err || notice) {
     // after paint so the element exists
     setTimeout(() => {
@@ -497,7 +506,7 @@ export default function App() {
     }
   }
 
-	/* for editing rows*/
+	/* for fetching open positions rows*/
 	async function fetchPending() {
 	  if (!account) return;
 	  setErr("");
@@ -539,9 +548,7 @@ export default function App() {
 	  }
 	}
 
-
-	
-	//new function for adding edits
+	//function for editing open positions
 	async function updateRowFields(
 		  index: number,
 		  fields: Partial<{ Status: string; "Out date": string; "Exit price": string; Fees: string }>
@@ -885,7 +892,7 @@ export default function App() {
       <Card tint="rgba(255,255,224,0.6)">
      	<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
 		  <h3 style={{ marginTop: 0 }}>
-			{mode === "pending" ? "Pending updates (blank Status)" : "Recent (from Excel)"}
+			{mode === "pending" ? "Open positions" : "Recent (from Excel)"}
 		  </h3>
 		  <div style={{ display: "flex", gap: 8 }}>
 			{mode === "pending" ? (
@@ -900,7 +907,7 @@ export default function App() {
 				disabled={!account || loadingPending}
 				aria-busy={loadingPending}
 			  >
-				{loadingPending ? "Loading…" : "Pending updates"}
+				{loadingPending ? "Loading…" : "Open positions"}
 			  </button>
 			)}
 		  </div>
@@ -988,16 +995,24 @@ export default function App() {
 				return (
 				  <div key={index} className="recent-card" role="button"
 					   onClick={() => {
-						 const get = (h: string) => values[headerToIdx.get(h)!] ?? "";
-						 setEditRow({
-						   index,
-						   status: String(get("Status") || ""),
-						   outDate: String(get("Out date") || ""),
-						   exitPrice: String(get("Exit price") || ""),
-						   // add fees here:
-						   fees: String(get("Fees") || ""),
-						 } as any);
-					   }}
+						  try {
+							const get = (h: string) => {
+							  const pos = headerToIdx.get(h);
+							  return pos != null ? values[pos] : "";
+							};
+							setEditRow({
+							  index,
+							  status: String(get("Status") || ""),
+							  outDate: String(get("Out date") || ""),
+							  exitPrice: String(get("Exit price") || ""),
+							  fees: String(get("Fees") || ""),
+							});
+							// cheap visual proof in dev tools
+							console.debug("Opening editor for index", index);
+						  } catch (e) {
+							setErr((e as any)?.message || String(e));
+						  }
+						}}
 					   style={{ cursor: "pointer" }}>
 					<div className="recent-fields">
 					  {showIdxs.map((j) => {
@@ -1020,68 +1035,69 @@ export default function App() {
 
       </Card>
 	{editRow && (
-	  <Card tint="rgba(240,248,255,0.7)">
-		<h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
+	  {editRow && (
+		  <Card tint="rgba(240,248,255,0.7)">
+			<div id="edit-modal"> {/* add this wrapper or put id on Card's inner div */}
+			  <h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
+			<div className="form-grid">
+			  {/* Status */}
+			  <label className="field2">
+				<span className="field2-label">Status</span>
+				<select
+				  className="fi-input is-select"
+				  value={editRow.status}
+				  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
+				>
+				  <option value=""></option>
+				  {(listOptions["Status"] || []).map((s) => (
+					<option key={s} value={s}>{s}</option>
+				  ))}
+				</select>
+			  </label>
 
-		<div className="form-grid">
-		  {/* Status */}
-		  <label className="field2">
-			<span className="field2-label">Status</span>
-			<select
-			  className="fi-input is-select"
-			  value={editRow.status}
-			  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
-			>
-			  <option value=""></option>
-			  {(listOptions["Status"] || []).map((s) => (
-				<option key={s} value={s}>{s}</option>
-			  ))}
-			</select>
-		  </label>
+			  {/* Out date */}
+			  <label className="field2">
+				<span className="field2-label">Out date</span>
+				<input
+				  type="date"
+				  className="fi-input"
+				  value={editRow.outDate}
+				  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
+				/>
+			  </label>
 
-		  {/* Out date */}
-		  <label className="field2">
-			<span className="field2-label">Out date</span>
-			<input
-			  type="date"
-			  className="fi-input"
-			  value={editRow.outDate}
-			  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
-			/>
-		  </label>
+			  {/* Exit price */}
+			  <label className="field2">
+				<span className="field2-label">Exit price</span>
+				<input
+				  type="text"
+				  inputMode="decimal"
+				  className="fi-input"
+				  value={editRow.exitPrice}
+				  onChange={(e) => {
+					const v = e.target.value;
+					if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+					  setEditRow({ ...editRow, exitPrice: v });
+				  }}
+				/>
+			  </label>
 
-		  {/* Exit price */}
-		  <label className="field2">
-			<span className="field2-label">Exit price</span>
-			<input
-			  type="text"
-			  inputMode="decimal"
-			  className="fi-input"
-			  value={editRow.exitPrice}
-			  onChange={(e) => {
-				const v = e.target.value;
-				if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-				  setEditRow({ ...editRow, exitPrice: v });
-			  }}
-			/>
-		  </label>
-
-		  {/* Fees */}
-		  <label className="field2">
-			<span className="field2-label">Fees</span>
-			<input
-			  type="text"
-			  inputMode="decimal"
-			  className="fi-input"
-			  value={editRow.fees}
-			  onChange={(e) => {
-				const v = e.target.value;
-				if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-				  setEditRow({ ...editRow, fees: v });
-			  }}
-			/>
-		  </label>
-		</div>
+			  {/* Fees */}
+			  <label className="field2">
+				<span className="field2-label">Fees</span>
+				<input
+				  type="text"
+				  inputMode="decimal"
+				  className="fi-input"
+				  value={editRow.fees}
+				  onChange={(e) => {
+					const v = e.target.value;
+					if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+					  setEditRow({ ...editRow, fees: v });
+				  }}
+				/>
+			  </label>
+			</div>
 
 		<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
 		  <button
@@ -1110,8 +1126,9 @@ export default function App() {
 		  >
 			Cancel
 		  </button>
-		</div>
-	  </Card>
+		</div> 
+	</div>
+	</Card>
 	)}
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
