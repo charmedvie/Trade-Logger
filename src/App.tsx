@@ -924,156 +924,103 @@ export default function App() {
 
 
       <Card tint="rgba(255,255,224,0.6)">
-     	<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-		  <h3 style={{ marginTop: 0 }}>
-			{mode === "pending" ? "Open positions" : "Recent (from Excel)"}
-		  </h3>
-		  <div style={{ display: "flex", gap: 8 }}>
-			{mode === "pending" ? (
-			  <button style={btn("#eee", "#111")} {...btnHoverProps()} onClick={() => setMode("normal")}>
-				Back
-			  </button>
-			) : (
-			  <button
-				style={btn()}
-				{...btnHoverProps()}
-				onClick={fetchPending}
-				disabled={!account || loadingPending}
-				aria-busy={loadingPending}
-			  >
-				{loadingPending ? "Loading…" : "Open positions"}
-			  </button>
-			)}
-		  </div>
-		</div>
-
-        {/* Desktop/tablet: compact table with only selected columns */}
-        {!isMobile && (
-		  <div className="recent-stack">
-			{recent.map((row, i) => {
-			  const isBlankStatus =
-				statusColumnIndex >= 0 &&
-				(row[statusColumnIndex] == null ||
-				 String(row[statusColumnIndex]).trim() === "");
-
-			  return (
-				<div
-				  key={i}
-				  className="recent-card"
-				  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+		  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+			<h3 style={{ marginTop: 0 }}>
+			  {mode === "pending" ? "Pending updates (blank Status)" : "Recent (from Excel)"}
+			</h3>
+			<div style={{ display: "flex", gap: 8 }}>
+			  {mode === "pending" ? (
+				<button
+				  style={btn("#eee", "#111")}
+				  {...btnHoverProps()}
+				  onClick={() => setMode("normal")}
 				>
-				  <div className="recent-fields">
-					{recentVisibleIdxs.map((j) => {
-					  const header = CONFIG.colMapping[j].header;
-					  const cell = row[j];
-					  const val = prettyCell(cell, header);
-					  return (
-						<div key={j} className="rf">
-						  <span className="k">{header}:</span>
-						  <span className="v" style={cellStyle(header, cell)}>
-							{val || "-"}
-						  </span>
-						</div>
-					  );
-					})}
-				  </div>
-				</div>
-			  );
-			})}
-		  </div>
-		)}
-
-
-        {/* Mobile: stacked cards, NO horizontal scroll */}
-        {isMobile && (
-		  <div className="recent-stack">
-			{recent.map((row, i) => {
-			  const isBlankStatus =
-				statusColumnIndex >= 0 &&
-				(row[statusColumnIndex] == null ||
-				 String(row[statusColumnIndex]).trim() === "");
-
-			  return (
-				<div
-				  key={i}
-				  className="recent-card"
-				  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+				  Back
+				</button>
+			  ) : (
+				<button
+				  style={btn()}
+				  {...btnHoverProps()}
+				  onClick={fetchPending}
+				  disabled={!account || loadingPending}
+				  aria-busy={loadingPending}
 				>
-				  <div className="recent-fields">
-					{recentVisibleIdxs.map((j) => {
-					  const header = CONFIG.colMapping[j].header;
-					  const cell = row[j];
-					  const val = prettyCell(cell, header);
-					  return (
-						<div key={j} className="rf">
-						  <span className="k">{header}:</span>
-						  <span className="v" style={cellStyle(header, cell)}>
-							{val || "-"}
-						  </span>
+				  {loadingPending ? "Loading…" : "Pending updates"}
+				</button>
+			  )}
+			</div>
+		  </div>
+
+		  {(() => {
+			const rowsToShow = mode === "pending" ? pending : recent;
+			if (rowsToShow.length === 0) {
+			  return <div className="recent-card">No rows to show 🎉</div>;
+			}
+
+			return (
+			  <div className="recent-stack">
+				{rowsToShow.map((rowObj, i) => {
+				  // Support both pending objects ({ index, values }) and recent arrays
+				  const values = Array.isArray(rowObj) ? rowObj : rowObj.values;
+				  const rowIndex = Array.isArray(rowObj) ? i : rowObj.index;
+				  const isBlankStatus =
+					statusColumnIndex >= 0 &&
+					(values[statusColumnIndex] == null ||
+					  String(values[statusColumnIndex]).trim() === "");
+
+				  const showIdxs = getRecentVisibleIndices();
+
+				  return (
+					<div
+					  key={rowIndex}
+					  className="recent-card"
+					  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+					>
+					  <div className="recent-fields">
+						{showIdxs.map((j) => {
+						  const header = CONFIG.colMapping[j].header;
+						  const cell = values[j];
+						  const val = prettyCell(cell, header);
+						  return (
+							<div key={j} className="rf">
+							  <span className="k">{header}:</span>
+							  <span className="v" style={cellStyle(header, cell)}>
+								{val || "-"}
+							  </span>
+							</div>
+						  );
+						})}
+					  </div>
+
+					  {mode === "pending" && (
+						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+						  <button
+							style={btn("#eee", "#111")}
+							{...btnHoverProps()}
+							onClick={() => {
+							  const get = (h: string) =>
+								values[headerToIdx.get(h)!] ?? "";
+							  setEditRow({
+								index: rowIndex,
+								status: String(get("Status") || ""),
+								outDate: String(get("Out date") || ""),
+								exitPrice: String(get("Exit price") || ""),
+								fees: String(get("Fees") || ""),
+							  });
+							}}
+						  >
+							Edit
+						  </button>
 						</div>
-					  );
-					})}
-				  </div>
-				</div>
-			  );
-			})}
-		  </div>
-		)}
-		
-		{mode === "pending" && (
-		  <div className="recent-stack">
-			{pending.length === 0 ? (
-			  <div className="recent-card">No rows with blank Status 🎉</div>
-			) : (
-			  pending.map(({ index, values }) => {
-				const showIdxs = getRecentVisibleIndices();
-				const get = (h: string) => {
-				  const pos = headerToIdx.get(h);
-				  return pos != null ? values[pos] : "";
-				};
-				return (
-				  <div key={index} className="recent-card">
-					<div className="recent-fields">
-					  {showIdxs.map((j) => {
-						const header = CONFIG.colMapping[j].header;
-						const val = prettyCell(values[j], header) || "-";
-						return (
-						  <div key={j} className="rf">
-							<span className="k">{header}:</span>
-							<span className="v" style={cellStyle(header, values[j])}>{val}</span>
-						  </div>
-						);
-					  })}
+					  )}
 					</div>
+				  );
+				})}
+			  </div>
+			);
+		  })()}
+		</Card>
 
-					{/* explicit Edit button */}
-					<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-					  <button
-						style={btn("#eee", "#111")}
-						{...btnHoverProps()}
-						onClick={() => {
-						  setEditRow({
-							index,
-							status: String(get("Status") || ""),
-							outDate: String(get("Out date") || ""),
-							exitPrice: String(get("Exit price") || ""),
-							fees: String(get("Fees") || ""),
-						  });
-						}}
-						aria-label={`Edit row ${index}`}
-					  >
-						Edit
-					  </button>
-					</div>
-				  </div>
-				);
-			  })
-			)}
-		  </div>
-		)}
-
-
-      </Card>
 	  
 	 {editRow && (
 		  <div
