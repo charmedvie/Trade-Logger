@@ -928,7 +928,7 @@ export default function App() {
       <Card tint="rgba(255,255,224,0.6)">
 		  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
 			<h3 style={{ marginTop: 0 }}>
-			  {mode === "pending" ? "Pending updates (blank Status)" : "Recent (from Excel)"}
+			  {mode === "pending" ? "Open positions" : "Recent trades"}
 			</h3>
 			<div style={{ display: "flex", gap: 8 }}>
 			  {mode === "pending" ? (
@@ -947,7 +947,7 @@ export default function App() {
 				  disabled={!account || loadingPending}
 				  aria-busy={loadingPending}
 				>
-				  {loadingPending ? "Loading…" : "Pending updates"}
+				  {loadingPending ? "Loading…" : "Open positions"}
 				</button>
 			  )}
 			</div>
@@ -1159,7 +1159,7 @@ export default function App() {
 
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
-        Tip: add this site to your phone Home Screen to use it like an app.
+        Such a cool app, so proud!.
       </p>
     </div>
   );
