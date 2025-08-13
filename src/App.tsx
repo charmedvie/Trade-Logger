@@ -558,7 +558,7 @@ export default function App() {
     >
       <style>{` 
 		/* --- FORM GRID --- */
-			.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:12px}
+		.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:12px}
 			@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
 
 			/* Label-above style */
@@ -580,6 +580,27 @@ export default function App() {
 			/* Recent tweaks you already wanted */
 			.k{font-weight:700}
 			.recent-table th{font-weight:700}
+		/* --- PREVIEW (no horizontal scroll) --- */
+			.preview-grid{
+			  display:grid;
+			  grid-template-columns:repeat(2,minmax(0,1fr)); /* 2 cols on phones */
+			  gap:8px;
+			}
+			@media (min-width:640px){ .preview-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+			@media (min-width:960px){ .preview-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+			.pv{
+			  background:rgba(255,255,255,.7);
+			  border:1px solid #eee;
+			  border-radius:10px;
+			  padding:8px 10px;
+			  min-width:0; /* allow wrapping */
+			}
+			.pv-k{ font-size:12px; color:#6b7280; font-weight:600; margin-bottom:2px; }
+			.pv-v{ font-weight:600; word-break:break-word; overflow-wrap:anywhere; }
+
+			
+			
 
 		`}
 		</style>
@@ -671,54 +692,52 @@ export default function App() {
       </Card>
 
       {preview && (
-        <Card tint="rgba(255,228,225,0.6)">
-          <h3 style={{ marginTop: 0 }}>Preview (not saved yet)</h3>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse"}}>
-              <thead>
-                <tr>
-                  {(preview.headers || []).map((h, idx) => (
-                    <th
-                      key={idx}
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        color: "#666",
-                        borderBottom: "1px solid #eee",
-                        background: "rgba(255,255,255,0.4)",
-                        backdropFilter: "blur(4px)",
-                      }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {(preview.values || []).map((cell, j) => {
-                    const header = (preview.headers && preview.headers[j]) || "";
-                    const val = typeof prettyCell === "function" ? prettyCell(cell, header) : String(cell ?? "");
-                    return (
-                      <td key={j} style={{ padding: "10px 12px", borderBottom: "1px solid #f2f2f2", wordBreak: "break-word", overflowWrap: "break-word", maxWidth: 140, }}>
-                        {val}
-                      </td>
-                    );
-                  })}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-            <button onClick={async () => { await save(new Event("submit") as any); setPreview(null); }} style={btn()} {...btnHoverProps()}>
-              Confirm & Save
-            </button>
-            <button onClick={() => setPreview(null)} style={btn("#eee", "#111")} {...btnHoverProps()}>
-              Cancel
-            </button>
-          </div>
-        </Card>
-      )}
+		  <Card tint="rgba(255,228,225,0.6)">
+			<h3 style={{ marginTop: 0 }}>Preview (not saved yet)</h3>
+
+			{(() => {
+			  // Pair up headers + values and drop blanks, but always show key fields.
+			  const ALWAYS_SHOW = new Set([
+				"Type","In date","Ticker","Strike","Position","Avg price",
+				"Fees","Exp date","Status","Exit price","Proceeds","P&L","Notes"
+			  ]);
+
+			  const pairs = (preview.headers || []).map((h, i) => {
+				const raw = (preview.values || [])[i];
+				const disp = prettyCell(raw, h);
+				const isBlank = disp === "" || disp == null;
+				return { h, v: disp, isBlank };
+			  });
+
+			  const visible = pairs.filter(p => !p.isBlank || ALWAYS_SHOW.has(p.h));
+
+			  return (
+				<div className="preview-grid">
+				  {visible.map(({ h, v }) => (
+					<div className="pv" key={h}>
+					  <div className="pv-k">{h}</div>
+					  <div className="pv-v">{v}</div>
+					</div>
+				  ))}
+				</div>
+			  );
+			})()}
+
+			<div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+			  <button
+				onClick={async () => { await save(new Event("submit") as any); setPreview(null); }}
+				style={btn()}
+				{...btnHoverProps()}
+			  >
+				Confirm & Save
+			  </button>
+			  <button onClick={() => setPreview(null)} style={btn("#eee", "#111")} {...btnHoverProps()}>
+				Cancel
+			  </button>
+			</div>
+		  </Card>
+		)}
+
 
       <Card tint="rgba(255,255,224,0.6)">
         <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
