@@ -1012,6 +1012,100 @@ export default function App() {
 		)}
 
       </Card>
+	{editRow && (
+	  <Card tint="rgba(240,248,255,0.7)">
+		<h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
+
+		<div className="form-grid">
+		  {/* Status */}
+		  <label className="field2">
+			<span className="field2-label">Status</span>
+			<select
+			  className="fi-input is-select"
+			  value={editRow.status}
+			  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
+			>
+			  <option value=""></option>
+			  {(listOptions["Status"] || []).map((s) => (
+				<option key={s} value={s}>{s}</option>
+			  ))}
+			</select>
+		  </label>
+
+		  {/* Out date */}
+		  <label className="field2">
+			<span className="field2-label">Out date</span>
+			<input
+			  type="date"
+			  className="fi-input"
+			  value={editRow.outDate}
+			  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
+			/>
+		  </label>
+
+		  {/* Exit price */}
+		  <label className="field2">
+			<span className="field2-label">Exit price</span>
+			<input
+			  type="text"
+			  inputMode="decimal"
+			  className="fi-input"
+			  value={editRow.exitPrice}
+			  onChange={(e) => {
+				const v = e.target.value;
+				if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+				  setEditRow({ ...editRow, exitPrice: v });
+			  }}
+			/>
+		  </label>
+
+		  {/* Fees */}
+		  <label className="field2">
+			<span className="field2-label">Fees</span>
+			<input
+			  type="text"
+			  inputMode="decimal"
+			  className="fi-input"
+			  value={editRow.fees}
+			  onChange={(e) => {
+				const v = e.target.value;
+				if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+				  setEditRow({ ...editRow, fees: v });
+			  }}
+			/>
+		  </label>
+		</div>
+
+		<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+		  <button
+			style={btn()}
+			{...btnHoverProps()}
+			onClick={async () => {
+			  try {
+				await updateRowFields(editRow.index, {
+				  Status: editRow.status,
+				  "Out date": editRow.outDate,
+				  "Exit price": editRow.exitPrice,
+				  Fees: editRow.fees,           // ← THIS is the Save handler change
+				});
+				setEditRow(null);
+			  } catch (e: any) {
+				setErr(e.message || String(e));
+			  }
+			}}
+		  >
+			Save changes
+		  </button>
+		  <button
+			style={btn("#eee", "#111")}
+			{...btnHoverProps()}
+			onClick={() => setEditRow(null)}
+		  >
+			Cancel
+		  </button>
+		</div>
+	  </Card>
+	)}
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
         Tip: add this site to your phone Home Screen to use it like an app.
@@ -1045,23 +1139,12 @@ function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
 
 function Field({ label, children, full }: any) {
   return (
-    <label className="field2">
-	  <span className="field2-label">Fees</span>
-	  <input
-		type="text"
-		inputMode="decimal"
-		className="fi-input"
-		value={editRow.fees}
-		onChange={(e) => {
-		  const v = e.target.value;
-		  if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-			setEditRow({ ...editRow, fees: v });
-		}}
-	  />
-	</label>
+    <label className={`field2${full ? " field2--full" : ""}`}>
+      <span className="field2-label">{label}</span>
+      {children}
+    </label>
   );
 }
-
 
 function Card({ children, tint = "rgba(255,255,255,0.6)" }: any) {
   return (
