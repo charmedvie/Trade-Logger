@@ -997,19 +997,18 @@ export default function App() {
 				  <div key={index} className="recent-card" role="button"
 					   onClick={() => {
 						  try {
-							const get = (h: string) => {
+							const safeGet = (h: string) => {
 							  const pos = headerToIdx.get(h);
 							  return pos != null ? values[pos] : "";
 							};
 							setEditRow({
 							  index,
-							  status: String(get("Status") || ""),
-							  outDate: String(get("Out date") || ""),
-							  exitPrice: String(get("Exit price") || ""),
-							  fees: String(get("Fees") || ""),
+							  status: String(safeGet("Status") || ""),
+							  outDate: String(safeGet("Out date") || ""),
+							  exitPrice: String(safeGet("Exit price") || ""),
+							  fees: String(safeGet("Fees") || ""),
 							});
-							// cheap visual proof in dev tools
-							console.debug("Opening editor for index", index);
+							console.debug("Opened editor for row index:", index);
 						  } catch (e) {
 							setErr((e as any)?.message || String(e));
 						  }
