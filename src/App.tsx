@@ -622,7 +622,7 @@ export default function App() {
 			/* label/value on one line */
 			.rf{display:flex;gap:6px;min-width:0}
 			.rf .k{font-weight:400;color:#475569;white-space:nowrap}
-			.rf .v{font-weight:700;overflow-wrap:anywhere}
+			.rf .v{font-weight:500;overflow-wrap:anywhere}
 			
 			/* Inline minus toggle for numeric inputs */
 			.num-wrap{ position:relative; }
@@ -811,7 +811,7 @@ export default function App() {
 
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
-        {!isMobile && (
+        {isMobile && (
 		  <div className="recent-stack">
 			{recent.map((row, i) => {
 			  const isBlankStatus =
