@@ -985,6 +985,7 @@ export default function App() {
 			})}
 		  </div>
 		)}
+		
 		{mode === "pending" && (
 		  <div className="recent-stack">
 			{pending.length === 0 ? (
@@ -1034,8 +1035,7 @@ export default function App() {
 		)}
 
       </Card>
-	{editRow && (
-	  {editRow && (
+	 {editRow && (
 		  <Card tint="rgba(240,248,255,0.7)">
 			<div id="edit-modal"> {/* add this wrapper or put id on Card's inner div */}
 			  <h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
