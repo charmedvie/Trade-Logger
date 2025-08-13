@@ -995,7 +995,7 @@ export default function App() {
 					  </div>
 
 					  {mode === "pending" && (
-						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingBottom: 6 }}>
+						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingBottom: 10 }}>
 						  <button
 							style={btn("#eee", "#111")}
 							{...btnHoverProps()}
