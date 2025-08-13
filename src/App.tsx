@@ -1007,7 +1007,7 @@ export default function App() {
 								status: String(get("Status") || ""),
 								outDate: String(get("Out date") || ""),
 								exitPrice: String(get("Exit price") || ""),
-								fees: String(get("Fees") || ""),
+								fees: get("Fees") != null ? String(get("Fees")) : "",
 							  });
 							}}
 						  >
@@ -1078,20 +1078,34 @@ export default function App() {
 				  </label>
 
 				  {/* Exit price */}
-				  <label className="field2">
-					<span className="field2-label">Exit price</span>
-					<input
-					  type="text"
-					  inputMode="decimal"
-					  className="fi-input"
-					  value={editRow.exitPrice}
-					  onChange={(e) => {
-						const v = e.target.value;
-						if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-						  setEditRow({ ...editRow, exitPrice: v });
-					  }}
-					/>
-				  </label>
+					<label className="field2">
+					  <span className="field2-label">Exit price</span>
+					  <div className="num-wrap">
+						<input
+						  type="text"
+						  inputMode="decimal"
+						  className="fi-input"
+						  value={editRow.exitPrice}
+						  onChange={(e) => {
+							const v = e.target.value;
+							if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+							  setEditRow({ ...editRow, exitPrice: v });
+						  }}
+						/>
+						<button
+						  type="button"
+						  className="neg-btn"
+						  onClick={() => {
+							const s = String(editRow.exitPrice ?? "");
+							const next = s.startsWith("-") ? s.slice(1) : "-" + s.replace(/^-/,"");
+							setEditRow({ ...editRow, exitPrice: next });
+						  }}
+						>
+						  ±
+						</button>
+					  </div>
+					</label>
+
 
 				  {/* Fees */}
 				  <label className="field2">
