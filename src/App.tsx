@@ -128,7 +128,7 @@ function wbPath() {
   return `/me/drive/root:${encodeURI(CONFIG.filePath)}:/workbook`;
 }
 
-async function listRows(top = 25) {
+async function listRows(top = 20) {
   return graphFetch(
     `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=${top}`,
     { method: "GET" }
@@ -356,7 +356,7 @@ export default function App() {
           const bt = bDate ? bDate.getTime() : -Infinity;
           return bt - at;
         })
-        .slice(0, 25)
+        .slice(0, 20)
         .map((r: any) => {
           const row = [...r.values[0]];
           const d = toJsDate(row[inDateIdx]);
@@ -624,7 +624,15 @@ export default function App() {
 			.rf .k{font-weight:400;color:#475569;white-space:nowrap}
 			.rf .v{font-weight:700;overflow-wrap:anywhere}
 			
-
+			/* Inline minus toggle for numeric inputs */
+			.num-wrap{ position:relative; }
+			.num-wrap .neg-btn{
+			  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+			  border:1px solid #e5e7eb; background:#fff; border-radius:8px;
+			  padding:2px 6px; font-weight:700; line-height:1; cursor:pointer;
+			  box-shadow:0 1px 3px rgba(0,0,0,.06);
+			}
+			.num-wrap .neg-btn:active{ transform:translateY(-50%) scale(.98); }
 		`}
 		</style>
 
@@ -952,22 +960,32 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
     return <input type="date" className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} />;
   }
   
-  // Numeric-ish fields (allow negatives like -1.23)
-  
-	 if (/price|fees|strike|exit|proceeds|p&l|roi/i.test(c.header)) {
+  // Numeric-ish fields (allow negatives like -1.23) + iOS minus toggle
+	if (/price|fees|strike|exit|proceeds|p&l|roi/i.test(c.header)) {
+	  const val = form[c.key] ?? "";
+	  const toggleNeg = () => {
+		const s = String(val || "");
+		const next = s.startsWith("-") ? s.slice(1) : ("-" + s.replace(/^-/,""));
+		onChange(c.key, next);
+	  };
 	  return (
-		<input
-		  type="text"
-		  inputMode="decimal"
-		  className="fi-input"
-		  value={form[c.key] ?? ""}
-		  onChange={(e) => {
-			const v = e.target.value;
-			// allow: "", "-", "-.", ".", "-1", "1", "1.2", "-1.2"
-			if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
-		  }}		  
-		  placeholder={c.header.includes("Avg price") ? "1.2 or -1.2" : ""}
-		/>
+		<div className="num-wrap">
+		  <input
+			type="text"
+			inputMode="decimal"
+			className="fi-input"
+			value={val}
+			onChange={(e) => {
+			  const v = e.target.value;
+			  // allow: "", "-", "-.", ".", "-1", "1", "1.2", "-1.2"
+			  if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
+			}}
+			style={inputStyle()}
+			placeholder={c.header.includes("Avg price") ? "1.2 or -1.2" : ""}
+			enterKeyHint="done"
+		  />
+		  <button type="button" className="neg-btn" onClick={toggleNeg} aria-label="Toggle negative">±</button>
+		</div>
 	  );
 	}
 
@@ -980,17 +998,6 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
     />
   );
 }
-
-/*function inputStyle() {
-  return {
-    width: "80%"
-   //padding: "10px 8px",
-    //border: "1px solid #ccc",
-   // borderRadius: 10,
-   // fontSize: 14,
-	// minWidth: 0
-  };
-}*/
 
 function btn(bg = "linear-gradient(135deg, #ffd6e8, #d6f0ff)", color = "#333") {
   return {
