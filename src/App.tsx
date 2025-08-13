@@ -511,7 +511,7 @@ export default function App() {
 	  setErr("");
 	  setLoadingPending(true);
 	  try {
-		// Get real column positions from Excel
+		// 1) Get Excel's actual columns (name -> index in the sheet)
 		const cols = await graphFetch(
 		  `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/columns?$select=name,index`,
 		  { method: "GET" }
@@ -519,37 +519,59 @@ export default function App() {
 		const colIdx = new Map<string, number>();
 		(cols.value || []).forEach((c: any) => colIdx.set(String(c.name).trim(), c.index));
 
+		// Resolve needed columns (by Excel's real names)
 		const sIdx = colIdx.get("Status");
 		const tIdx = colIdx.get("Ticker");
-		const inIdx = colIdx.get("In date");
-		if (sIdx == null || tIdx == null || inIdx == null) {
+		const inIdxExcel = colIdx.get("In date");
+		if (sIdx == null || tIdx == null || inIdxExcel == null) {
 		  throw new Error("Missing one or more required columns: Status, Ticker, In date.");
 		}
 
+		// Also get the CONFIG position of "In date" (for display/sort after reordering)
+		const inIdxConfig = CONFIG.colMapping.findIndex((c) => c.header === "In date");
+
+		// 2) Pull rows
 		const rows = await listAllRows();
 
-		const blanks = rows
+		const pendingRows = rows
+		  // Filter by Excel's real indexes
 		  .filter((r: any) => {
 			const row = r?.values?.[0] || [];
-			const s = row[sIdx];
-			const t = row[tIdx];
-			const statusBlank = s == null || String(s).replace(/\u00a0/g, " ").trim() === "";
-			const hasTicker = t != null && String(t).replace(/\u00a0/g, " ").trim() !== "";
-			return statusBlank && hasTicker;
+			const statusVal = row[sIdx];
+			const tickerVal = row[tIdx];
+			const statusEmpty =
+			  statusVal == null || String(statusVal).replace(/\u00a0/g, " ").trim() === "";
+			const tickerFilled =
+			  tickerVal != null && String(tickerVal).replace(/\u00a0/g, " ").trim() !== "";
+			return statusEmpty && tickerFilled;
 		  })
+		  // Reorder each row to match CONFIG.colMapping so render uses correct cells
 		  .map((r: any) => {
-			const row = [...(r.values?.[0] || [])];
-			const d = toJsDate(row[inIdx]);
-			row[inIdx] = fmtDDMMMYYYY(d);
-			return { index: r.index, values: row };
+			const row = r?.values?.[0] || [];
+			const aligned = CONFIG.colMapping.map((c) => {
+			  const real = colIdx.get(c.header);
+			  return real != null ? row[real] : "";
+			});
+
+			// Pretty "In date" for display using CONFIG position
+			if (inIdxConfig >= 0) {
+			  const d = toJsDate(aligned[inIdxConfig]);
+			  aligned[inIdxConfig] = fmtDDMMMYYYY(d);
+			}
+
+			return { index: r.index, values: aligned };
 		  })
+		  // 3) Sort by newest "In date" using CONFIG position (since values are aligned now)
 		  .sort((a, b) => {
-			const aDate = toJsDate(a.values[inIdx]);
-			const bDate = toJsDate(b.values[inIdx]);
-			return (bDate ? bDate.getTime() : -Infinity) - (aDate ? aDate.getTime() : -Infinity);
+			if (inIdxConfig < 0) return 0;
+			const aDate = toJsDate(a.values[inIdxConfig]);
+			const bDate = toJsDate(b.values[inIdxConfig]);
+			const at = aDate ? aDate.getTime() : -Infinity;
+			const bt = bDate ? bDate.getTime() : -Infinity;
+			return bt - at;
 		  });
 
-		setPending(blanks);
+		setPending(pendingRows);
 		setMode("pending");
 	  } catch (e: any) {
 		setErr(e.message || String(e));
@@ -557,6 +579,7 @@ export default function App() {
 		setLoadingPending(false);
 	  }
 	}
+
 
 
 	//function for editing open positions
