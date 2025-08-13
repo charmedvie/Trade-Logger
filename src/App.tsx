@@ -289,7 +289,7 @@ export default function App() {
   }, []);
   
  	useEffect(() => {
-	  function onKey(e: KeyboardEvent) {
+	  function onKey(e) {
 		if (e.key === "Escape") setEditRow(null);
 	  }
 	  if (editRow) window.addEventListener("keydown", onKey);
@@ -991,28 +991,13 @@ export default function App() {
 			  <div className="recent-card">No rows with blank Status 🎉</div>
 			) : (
 			  pending.map(({ index, values }) => {
-				const showIdxs = getRecentVisibleIndices(); // reuse your selection
+				const showIdxs = getRecentVisibleIndices();
+				const get = (h: string) => {
+				  const pos = headerToIdx.get(h);
+				  return pos != null ? values[pos] : "";
+				};
 				return (
-				  <div key={index} className="recent-card" role="button"
-					   onClick={() => {
-						  try {
-							const safeGet = (h: string) => {
-							  const pos = headerToIdx.get(h);
-							  return pos != null ? values[pos] : "";
-							};
-							setEditRow({
-							  index,
-							  status: String(safeGet("Status") || ""),
-							  outDate: String(safeGet("Out date") || ""),
-							  exitPrice: String(safeGet("Exit price") || ""),
-							  fees: String(safeGet("Fees") || ""),
-							});
-							console.debug("Opened editor for row index:", index);
-						  } catch (e) {
-							setErr((e as any)?.message || String(e));
-						  }
-						}}
-					   style={{ cursor: "pointer" }}>
+				  <div key={index} className="recent-card">
 					<div className="recent-fields">
 					  {showIdxs.map((j) => {
 						const header = CONFIG.colMapping[j].header;
@@ -1025,6 +1010,26 @@ export default function App() {
 						);
 					  })}
 					</div>
+
+					{/* explicit Edit button */}
+					<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+					  <button
+						style={btn("#eee", "#111")}
+						{...btnHoverProps()}
+						onClick={() => {
+						  setEditRow({
+							index,
+							status: String(get("Status") || ""),
+							outDate: String(get("Out date") || ""),
+							exitPrice: String(get("Exit price") || ""),
+							fees: String(get("Fees") || ""),
+						  });
+						}}
+						aria-label={`Edit row ${index}`}
+					  >
+						Edit
+					  </button>
+					</div>
 				  </div>
 				);
 			  })
@@ -1032,7 +1037,9 @@ export default function App() {
 		  </div>
 		)}
 
+
       </Card>
+	  
 	 {editRow && (
 		  <div
 			role="dialog"
