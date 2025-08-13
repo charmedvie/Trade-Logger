@@ -1298,7 +1298,7 @@ function btn(bg = "linear-gradient(135deg, #ffd6e8, #d6f0ff)", color = "#333") {
     border: "1px solid rgba(255,255,255,0.4)",
     borderRadius: 12,
     cursor: "pointer",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",,
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
     backdropFilter: "blur(6px)",
     transition: "all 0.2s ease",
     fontWeight: 500,
