@@ -558,41 +558,29 @@ export default function App() {
     >
       <style>{` 
 		/* --- FORM GRID --- */
-		.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:10px;row-gap:12px}
-		@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
+			.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:12px}
+			@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
 
-		/* Recent mobile headings bold */
-		.k{font-weight:700}
+			/* Label-above style */
+			.field2{display:flex;flex-direction:column;gap:6px;min-width:0}
+			.field2--full{grid-column:1 / -1}
+			.field2-label{font-weight:700;font-size:14px;color:#1f2937}
 
-		/* --- FIELD + FLOATING LABEL --- */
-		.field{position:relative;display:block}
-		.field-label{
-		  position:absolute;left:12px;top:14px;
-		  font-size:14px;font-weight:600;color:#667085;
-		  background:#fff;padding:0 6px;border-radius:6px;
-		  pointer-events:none;transition:all .15s ease
-		}
-		.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
+			/* White inputs, consistent height */
+			.fi-input{
+			  width:100%;min-width:0;box-sizing:border-box;appearance:none;
+			  background:#fff;color:#0f172a;
+			  border:1px solid #e5e7eb;border-radius:12px;
+			  height:52px;padding:12px 14px;font-size:16px;line-height:22px;
+			  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
+			}
+			.fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+			.is-select{padding-right:34px}
 
-		/* Float on focus or when not placeholder-shown */
-		.field > .fi-input:focus + .field-label,
-		.field > .fi-input:not(:placeholder-shown) + .field-label,
-		.field.has-value .field-label{top:-8px;font-size:12px;color:#475467}
+			/* Recent tweaks you already wanted */
+			.k{font-weight:700}
+			.recent-table th{font-weight:700}
 
-		/* --- INPUTS (white, consistent height) --- */
-		.field > .fi-input{
-		  width:100%;box-sizing:border-box;appearance:none;
-		  background:#fff !important;color:#0f172a;
-		  border:1px solid #e5e7eb;border-radius:12px;
-		  height:48px !important;padding:12px 12px !important;
-		  font-size:16px;line-height:22px;
-		  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
-		}
-		.field > .fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
-		.field > .fi-input.is-select{padding-right:34px}
-
-		/* Recent table headings bold */
-		.recent-table th{font-weight:700}
 		`}
 		</style>
 
@@ -891,22 +879,17 @@ function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
   );
 }
 
-function Field({ label, children, value, full }: any) {
-  const hasValue =
-    value !== undefined &&
-    value !== null &&
-    String(value).trim() !== "";
-
+function Field({ label, children, full }: any) {
   return (
-    <div
-      className={`field ${hasValue ? "has-value" : ""}`}
-      style={full ? { gridColumn: "1 / -1" } : undefined}
+    <label
+      className={`field2${full ? " field2--full" : ""}`}
     >
+      <span className="field2-label">{label}</span>
       {children}
-      <span className="field-label">{label}</span>
-    </div>
+    </label>
   );
 }
+
 
 function Card({ children, tint = "rgba(255,255,255,0.6)" }: any) {
   return (
