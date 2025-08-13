@@ -109,7 +109,8 @@ async function getAccessToken() {
 
 async function graphFetch(path: string, options: any = {}) {
   const token = await getAccessToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+  const url = /^https?:\/\//i.test(path) ? path : `https://graph.microsoft.com/v1.0${path}`;
+  const res = await fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -123,6 +124,18 @@ async function graphFetch(path: string, options: any = {}) {
   }
   return res.json();
 }
+
+async function listAllRows() {
+  let url = `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=5000`;
+  const rows: any[] = [];
+  while (url) {
+    const page = await graphFetch(url);
+    rows.push(...(page.value || []));
+    url = page["@odata.nextLink"] || "";
+  }
+  return rows;
+}
+
 
 function wbPath() {
   return `/me/drive/root:${encodeURI(CONFIG.filePath)}:/workbook`;
@@ -248,6 +261,22 @@ export default function App() {
   const msgRef = useRef<HTMLDivElement | null>(null);
   const statusColumnIndex = CONFIG.colMapping.findIndex(
     (c) => c.header.toLowerCase() === "status");
+  const [mode, setMode] = useState<"normal" | "pending">("normal");
+  const [pending, setPending] = useState<Array<{ index: number; values: any[] }>>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
+
+	const headerToIdx = useMemo(() => {
+	  const m = new Map<string, number>();
+	  CONFIG.colMapping.forEach((c, i) => m.set(c.header, i));
+	  return m;
+	}, []);
+	const [editRow, setEditRow] = useState<null | {
+		  index: number;
+		  status: string;
+		  outDate: string;
+		  exitPrice: string;
+		  fees: string;
+		}>(null);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(false);
@@ -467,6 +496,81 @@ export default function App() {
       setPreviewBusy(false);
     }
   }
+
+	/* for editing rows*/
+	async function fetchPending() {
+	  if (!account) return;
+	  setErr("");
+	  setLoadingPending(true);
+	  try {
+		const rows = await listAllRows();
+		const sIdx = headerToIdx.get("Status")!;
+		const inIdx = headerToIdx.get("In date")!;
+
+		const blanks = rows
+		  .filter((r: any) => {
+			const v = r?.values?.[0]?.[sIdx];
+			return v == null || String(v).trim() === "";
+		  })
+		  .map((r: any) => {
+			const row = [...(r.values?.[0] || [])];
+			const d = toJsDate(row[inIdx]);
+			row[inIdx] = fmtDDMMMYYYY(d);
+			return { index: r.index, values: row };
+		  })
+		  .sort((a, b) => {
+			const aDate = toJsDate(a.values[inIdx]);
+			const bDate = toJsDate(b.values[inIdx]);
+			return (bDate ? +bDate : -Infinity) - (aDate ? +aDate : -Infinity);
+		  });
+
+		setPending(blanks);
+		setMode("pending");
+	  } catch (e: any) {
+		setErr(e.message || String(e));
+	  } finally {
+		setLoadingPending(false);
+	  }
+	}
+	
+	//new function for adding edits
+	async function updateRowFields(
+		  index: number,
+		  fields: Partial<{ Status: string; "Out date": string; "Exit price": string; Fees: string }>
+		) {
+		  const source = mode === "pending" ? pending : recent;
+		  const rec = source.find((r) => r.index === index);
+		  if (!rec) throw new Error("Row not found in cache");
+
+		  const nextRow = [...rec.values];
+		  for (const [hdr, val] of Object.entries(fields)) {
+			const pos = headerToIdx.get(hdr);
+			if (pos != null) nextRow[pos] = val ?? "";
+		  }
+
+		  // normalise Out date to yyyy-mm-dd if user typed a display date
+		  const odx = headerToIdx.get("Out date");
+		  if (odx != null) {
+			const v = nextRow[odx];
+			if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(String(v))) {
+			  const [dd, mon, yyyy] = String(v).split("-");
+			  const d = new Date(`${dd} ${mon} ${yyyy}`);
+			  if (!isNaN(+d)) nextRow[odx] = d.toISOString().slice(0, 10);
+			}
+		  }
+
+		  await patchRowAtIndex(index, nextRow);
+
+		  // refresh the relevant list
+		  if (mode === "pending") {
+			setPending((p) => p.filter((r) => r.index !== index)); // drop from pending
+		  } else {
+			await refresh();
+		  }
+		  setNotice("Row updated ✅");
+		  setTimeout(() => setNotice(""), 2000);
+		}
+
 
   async function signIn() {
   if (authBusy) return;            // hard guard
@@ -771,7 +875,29 @@ export default function App() {
 
 
       <Card tint="rgba(255,255,224,0.6)">
-        <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
+        //<h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
+		<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+		  <h3 style={{ marginTop: 0 }}>
+			{mode === "pending" ? "Pending updates (blank Status)" : "Recent (from Excel)"}
+		  </h3>
+		  <div style={{ display: "flex", gap: 8 }}>
+			{mode === "pending" ? (
+			  <button style={btn("#eee", "#111")} {...btnHoverProps()} onClick={() => setMode("normal")}>
+				Back
+			  </button>
+			) : (
+			  <button
+				style={btn()}
+				{...btnHoverProps()}
+				onClick={fetchPending}
+				disabled={!account || loadingPending}
+				aria-busy={loadingPending}
+			  >
+				{loadingPending ? "Loading…" : "Pending updates"}
+			  </button>
+			)}
+		  </div>
+		</div>
 
         {/* Desktop/tablet: compact table with only selected columns */}
         {!isMobile && (
@@ -845,6 +971,45 @@ export default function App() {
 			})}
 		  </div>
 		)}
+		{mode === "pending" && (
+		  <div className="recent-stack">
+			{pending.length === 0 ? (
+			  <div className="recent-card">No rows with blank Status 🎉</div>
+			) : (
+			  pending.map(({ index, values }) => {
+				const showIdxs = getRecentVisibleIndices(); // reuse your selection
+				return (
+				  <div key={index} className="recent-card" role="button"
+					   onClick={() => {
+						 const get = (h: string) => values[headerToIdx.get(h)!] ?? "";
+						 setEditRow({
+						   index,
+						   status: String(get("Status") || ""),
+						   outDate: String(get("Out date") || ""),
+						   exitPrice: String(get("Exit price") || ""),
+						   // add fees here:
+						   fees: String(get("Fees") || ""),
+						 } as any);
+					   }}
+					   style={{ cursor: "pointer" }}>
+					<div className="recent-fields">
+					  {showIdxs.map((j) => {
+						const header = CONFIG.colMapping[j].header;
+						const val = prettyCell(values[j], header) || "-";
+						return (
+						  <div key={j} className="rf">
+							<span className="k">{header}:</span>
+							<span className="v" style={cellStyle(header, values[j])}>{val}</span>
+						  </div>
+						);
+					  })}
+					</div>
+				  </div>
+				);
+			  })
+			)}
+		  </div>
+		)}
 
       </Card>
 
@@ -880,12 +1045,20 @@ function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
 
 function Field({ label, children, full }: any) {
   return (
-    <label
-      className={`field2${full ? " field2--full" : ""}`}
-    >
-      <span className="field2-label">{label}</span>
-      {children}
-    </label>
+    <label className="field2">
+	  <span className="field2-label">Fees</span>
+	  <input
+		type="text"
+		inputMode="decimal"
+		className="fi-input"
+		value={editRow.fees}
+		onChange={(e) => {
+		  const v = e.target.value;
+		  if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+			setEditRow({ ...editRow, fees: v });
+		}}
+	  />
+	</label>
   );
 }
 
