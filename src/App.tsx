@@ -271,8 +271,8 @@ export default function App() {
 
   // Defaults
   const defaultForm = () => ({
-    type: "stock option",
-    acc: "",
+    type: "Stock option",
+    acc: "527",
     inDate: new Date().toISOString().slice(0, 10),
     ticker: "",
     strike: "",
@@ -599,7 +599,30 @@ export default function App() {
 			.pv-k{ font-size:12px; color:#6b7280; font-weight:600; margin-bottom:2px; }
 			.pv-v{ font-weight:600; word-break:break-word; overflow-wrap:anywhere; }
 
-			
+			/* --- RECENT: stacked cards, responsive grid inside --- */
+			.recent-stack{display:grid;grid-template-columns:1fr;row-gap:12px}
+
+			.recent-card{
+			  background:rgba(255,255,255,.55);
+			  border:1px solid rgba(0,0,0,.06);
+			  border-radius:12px;
+			  padding:10px 12px;
+			  box-shadow:0 1px 4px rgba(0,0,0,.04);  /* very subtle separator */
+			}
+
+			/* fields grid inside a card */
+			.recent-fields{
+			  display:grid;
+			  grid-template-columns:repeat(2,minmax(0,1fr)); /* phones: 2 cols */
+			  column-gap:12px; row-gap:6px; align-items:baseline;
+			}
+			@media (min-width:640px){ .recent-fields{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+			@media (min-width:960px){ .recent-fields{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+			/* label/value on one line */
+			.rf{display:flex;gap:6px;min-width:0}
+			.rf .k{font-weight:400;color:#475569;white-space:nowrap}
+			.rf .v{font-weight:700;overflow-wrap:anywhere}
 			
 
 		`}
@@ -743,69 +766,41 @@ export default function App() {
         <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
 
         {/* Desktop/tablet: compact table with only selected columns */}
-        {!isMobile && (
-          <div style={{ overflowX: "auto" }}>
-			  <table
-				style={{
-				  width: "100%",
-				  fontSize: 14,
-				  borderCollapse: "collapse"
-				}}
-			  >
-				<thead>
-				  <tr>
-					{headers.map((header) => (
-					  <th
-						key={header}
-						style={{
-						  textAlign: "left",
-						  padding: "10px 12px",
-						  borderBottom: "2px solid #ddd",
-						  position: "sticky",
-						  top: 0,
-						  background: "#f9f9f9",
-						  zIndex: 1
-						}}
-					  >
-						{header}
-					  </th>
-					))}
-				  </tr>
-				</thead>
-				<tbody>
-				  {recent.map((row, i) => {
-					const isBlankStatus =
-					  statusColumnIndex >= 0 &&
-					  (row[statusColumnIndex] == null ||
-						String(row[statusColumnIndex]).trim() === "");
+        {isMobile && (
+		  <div className="recent-stack">
+			{recent.map((row, i) => {
+			  const isBlankStatus =
+				statusColumnIndex >= 0 &&
+				(row[statusColumnIndex] == null ||
+				 String(row[statusColumnIndex]).trim() === "");
 
-					return (
-					  <tr
-						key={i}
-						style={isBlankStatus ? { background: "#ffffff" } : {}}
-					  >
-						{row.map((cell, j) => (
-						  <td
-							key={j}
-							style={{
-							  padding: "10px 12px",
-							  borderBottom: "1px solid #f2f2f2",
-							  wordBreak: "break-word",
-							  overflowWrap: "break-word",
-							  maxWidth: 140,
-							  ...cellStyle(headers[j], cell)
-							}}
-						  >
-							{cell}
-						  </td>
-						))}
-					  </tr>
-					);
-				  })}
-				</tbody>
-			  </table>
-			</div>
+			  return (
+				<div
+				  key={i}
+				  className="recent-card"
+				  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+				>
+				  <div className="recent-fields">
+					{recentVisibleIdxs.map((j) => {
+					  const header = CONFIG.colMapping[j].header;
+					  const cell = row[j];
+					  const val = prettyCell(cell, header);
+					  return (
+						<div key={j} className="rf">
+						  <span className="k">{header}:</span>
+						  <span className="v" style={cellStyle(header, cell)}>
+							{val || "-"}
+						  </span>
+						</div>
+					  );
+					})}
+				  </div>
+				</div>
+			  );
+			})}
+		  </div>
 		)}
+
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
         {isMobile && (
