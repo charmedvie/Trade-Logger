@@ -941,7 +941,7 @@ export default function App() {
 				</button>
 			  ) : (
 				<button
-				  style={{btn(), paddingBottom: 8}}
+				  style=style={{ ...btn(), paddingBottom: 8 }}
 				  {...btnHoverProps()}
 				  onClick={fetchPending}
 				  disabled={!account || loadingPending}
