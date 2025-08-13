@@ -505,9 +505,9 @@ export default function App() {
 	  try {
 		const rows = await listAllRows();
 
-		const sIdx = headerToIdx.get("Status")!;   // status column index
-		const tIdx = headerToIdx.get("Ticker")!;   // ticker column index
-		const inIdx = headerToIdx.get("In date")!; // for sorting/formatting
+		const sIdx = headerToIdx.get("Status")!;
+		const tIdx = headerToIdx.get("Ticker")!;
+		const inIdx = headerToIdx.get("In date")!;
 
 		const blanks = rows
 		  .filter((r: any) => {
@@ -515,8 +515,8 @@ export default function App() {
 			const s = row[sIdx];
 			const t = row[tIdx];
 			const statusBlank = s == null || String(s).trim() === "";
-			const hasTicker   = t != null && String(t).trim() !== "";
-			return statusBlank && hasTicker;        // <-- new condition
+			const hasTicker = t != null && String(t).trim() !== "";
+			return statusBlank && hasTicker;
 		  })
 		  .map((r: any) => {
 			const row = [...(r.values?.[0] || [])];
@@ -527,7 +527,7 @@ export default function App() {
 		  .sort((a, b) => {
 			const aDate = toJsDate(a.values[inIdx]);
 			const bDate = toJsDate(b.values[inIdx]);
-			return (bDate ? +bDate : -Infinity) - (aDate ? +aDate : -Infinity);
+			return (bDate ? bDate.getTime() : -Infinity) - (aDate ? aDate.getTime() : -Infinity);
 		  });
 
 		setPending(blanks);
@@ -538,6 +538,7 @@ export default function App() {
 		setLoadingPending(false);
 	  }
 	}
+
 
 	
 	//new function for adding edits
