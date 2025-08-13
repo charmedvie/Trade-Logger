@@ -288,14 +288,13 @@ export default function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   
-  useEffect(() => {
-  if (editRow) {
-    // scroll the editor card into view
-    const el = document.getElementById("edit-modal");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}, [editRow]);
-
+ 	useEffect(() => {
+	  function onKey(e: KeyboardEvent) {
+		if (e.key === "Escape") setEditRow(null);
+	  }
+	  if (editRow) window.addEventListener("keydown", onKey);
+	  return () => window.removeEventListener("keydown", onKey);
+	}, [editRow]);
   
   useEffect(() => {
   if (err || notice) {
@@ -1035,100 +1034,124 @@ export default function App() {
 
       </Card>
 	 {editRow && (
-		  <Card tint="rgba(240,248,255,0.7)">
-			<div id="edit-modal"> {/* add this wrapper or put id on Card's inner div */}
-			  <h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
-			<div className="form-grid">
-			  {/* Status */}
-			  <label className="field2">
-				<span className="field2-label">Status</span>
-				<select
-				  className="fi-input is-select"
-				  value={editRow.status}
-				  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
-				>
-				  <option value=""></option>
-				  {(listOptions["Status"] || []).map((s) => (
-					<option key={s} value={s}>{s}</option>
-				  ))}
-				</select>
-			  </label>
-
-			  {/* Out date */}
-			  <label className="field2">
-				<span className="field2-label">Out date</span>
-				<input
-				  type="date"
-				  className="fi-input"
-				  value={editRow.outDate}
-				  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
-				/>
-			  </label>
-
-			  {/* Exit price */}
-			  <label className="field2">
-				<span className="field2-label">Exit price</span>
-				<input
-				  type="text"
-				  inputMode="decimal"
-				  className="fi-input"
-				  value={editRow.exitPrice}
-				  onChange={(e) => {
-					const v = e.target.value;
-					if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-					  setEditRow({ ...editRow, exitPrice: v });
-				  }}
-				/>
-			  </label>
-
-			  {/* Fees */}
-			  <label className="field2">
-				<span className="field2-label">Fees</span>
-				<input
-				  type="text"
-				  inputMode="decimal"
-				  className="fi-input"
-				  value={editRow.fees}
-				  onChange={(e) => {
-					const v = e.target.value;
-					if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
-					  setEditRow({ ...editRow, fees: v });
-				  }}
-				/>
-			  </label>
-			</div>
-
-		<div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-		  <button
-			style={btn()}
-			{...btnHoverProps()}
-			onClick={async () => {
-			  try {
-				await updateRowFields(editRow.index, {
-				  Status: editRow.status,
-				  "Out date": editRow.outDate,
-				  "Exit price": editRow.exitPrice,
-				  Fees: editRow.fees,           // ← THIS is the Save handler change
-				});
-				setEditRow(null);
-			  } catch (e: any) {
-				setErr(e.message || String(e));
-			  }
+		  <div
+			role="dialog"
+			aria-modal="true"
+			aria-label={`Edit row ${editRow.index}`}
+			style={{
+			  position: "fixed",
+			  inset: 0,
+			  zIndex: 1000,
+			  display: "flex",
+			  alignItems: "center",
+			  justifyContent: "center",
+			  padding: 12,
+			  background: "rgba(0,0,0,0.35)",
+			  backdropFilter: "blur(2px)",
 			}}
+			onClick={() => setEditRow(null)} // click backdrop to close
 		  >
-			Save changes
-		  </button>
-		  <button
-			style={btn("#eee", "#111")}
-			{...btnHoverProps()}
-			onClick={() => setEditRow(null)}
-		  >
-			Cancel
-		  </button>
-		</div> 
-	</div>
-	</Card>
-	)}
+			<div
+			  onClick={(e) => e.stopPropagation()} // prevent backdrop close on inner click
+			  style={{ width: "100%", maxWidth: 640 }}
+			>
+			  <Card tint="rgba(240,248,255,0.95)">
+				<h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
+
+				<div className="form-grid">
+				  {/* Status */}
+				  <label className="field2">
+					<span className="field2-label">Status</span>
+					<select
+					  className="fi-input is-select"
+					  value={editRow.status}
+					  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
+					  autoFocus
+					>
+					  <option value=""></option>
+					  {(listOptions["Status"] || []).map((s) => (
+						<option key={s} value={s}>{s}</option>
+					  ))}
+					</select>
+				  </label>
+
+				  {/* Out date */}
+				  <label className="field2">
+					<span className="field2-label">Out date</span>
+					<input
+					  type="date"
+					  className="fi-input"
+					  value={editRow.outDate}
+					  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
+					/>
+				  </label>
+
+				  {/* Exit price */}
+				  <label className="field2">
+					<span className="field2-label">Exit price</span>
+					<input
+					  type="text"
+					  inputMode="decimal"
+					  className="fi-input"
+					  value={editRow.exitPrice}
+					  onChange={(e) => {
+						const v = e.target.value;
+						if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+						  setEditRow({ ...editRow, exitPrice: v });
+					  }}
+					/>
+				  </label>
+
+				  {/* Fees */}
+				  <label className="field2">
+					<span className="field2-label">Fees</span>
+					<input
+					  type="text"
+					  inputMode="decimal"
+					  className="fi-input"
+					  value={editRow.fees}
+					  onChange={(e) => {
+						const v = e.target.value;
+						if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+						  setEditRow({ ...editRow, fees: v });
+					  }}
+					/>
+				  </label>
+				</div>
+
+				<div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
+				  <button
+					style={btn("#eee", "#111")}
+					{...btnHoverProps()}
+					onClick={() => setEditRow(null)}
+				  >
+					Cancel
+				  </button>
+				  <button
+					style={btn()}
+					{...btnHoverProps()}
+					onClick={async () => {
+					  try {
+						await updateRowFields(editRow.index, {
+						  Status: editRow.status,
+						  "Out date": editRow.outDate,
+						  "Exit price": editRow.exitPrice,
+						  Fees: editRow.fees,
+						});
+						setEditRow(null);
+					  } catch (e: any) {
+						setErr(e.message || String(e));
+					  }
+					}}
+				  >
+					Save changes
+				  </button>
+				</div>
+			  </Card>
+			</div>
+		  </div>
+		)}
+
 
       <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
         Tip: add this site to your phone Home Screen to use it like an app.
