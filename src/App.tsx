@@ -774,7 +774,7 @@ export default function App() {
         <h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
 
         {/* Desktop/tablet: compact table with only selected columns */}
-        {isMobile && (
+        {!isMobile && (
 		  <div className="recent-stack">
 			{recent.map((row, i) => {
 			  const isBlankStatus =
@@ -881,7 +881,7 @@ export default function App() {
 // -------------------- UI helpers --------------------
 function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
   return (
-    <div /* ... */>
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
       {!account ? (
         <button onClick={onSignIn} disabled={authBusy} style={btn()} {...btnHoverProps()}>
           {authBusy ? "Signing in…" : "Sign in with Microsoft"}
@@ -974,18 +974,25 @@ function renderInput(c: any, form: any, onChange: any, listOptions: Record<strin
 			type="text"
 			inputMode="decimal"
 			className="fi-input"
-			value={val}
+			value={form[c.key] ?? ""}
 			onChange={(e) => {
 			  const v = e.target.value;
-			  // allow: "", "-", "-.", ".", "-1", "1", "1.2", "-1.2"
 			  if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
 			}}
-			style={inputStyle()}
-			placeholder={c.header.includes("Avg price") ? "1.2 or -1.2" : ""}
-			enterKeyHint="done"
 		  />
-		  <button type="button" className="neg-btn" onClick={toggleNeg} aria-label="Toggle negative">±</button>
+		  <button
+			type="button"
+			className="neg-btn"
+			onClick={() => {
+			  const s = String(form[c.key] ?? "");
+			  const next = s.startsWith("-") ? s.slice(1) : "-" + s.replace(/^-/,"");
+			  onChange(c.key, next);
+			}}
+		  >
+			±
+		  </button>
 		</div>
+
 	  );
 	}
 
