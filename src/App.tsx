@@ -504,13 +504,19 @@ export default function App() {
 	  setLoadingPending(true);
 	  try {
 		const rows = await listAllRows();
-		const sIdx = headerToIdx.get("Status")!;
-		const inIdx = headerToIdx.get("In date")!;
+
+		const sIdx = headerToIdx.get("Status")!;   // status column index
+		const tIdx = headerToIdx.get("Ticker")!;   // ticker column index
+		const inIdx = headerToIdx.get("In date")!; // for sorting/formatting
 
 		const blanks = rows
 		  .filter((r: any) => {
-			const v = r?.values?.[0]?.[sIdx];
-			return v == null || String(v).trim() === "";
+			const row = r?.values?.[0] || [];
+			const s = row[sIdx];
+			const t = row[tIdx];
+			const statusBlank = s == null || String(s).trim() === "";
+			const hasTicker   = t != null && String(t).trim() !== "";
+			return statusBlank && hasTicker;        // <-- new condition
 		  })
 		  .map((r: any) => {
 			const row = [...(r.values?.[0] || [])];
@@ -532,6 +538,7 @@ export default function App() {
 		setLoadingPending(false);
 	  }
 	}
+
 	
 	//new function for adding edits
 	async function updateRowFields(
@@ -875,8 +882,7 @@ export default function App() {
 
 
       <Card tint="rgba(255,255,224,0.6)">
-        //<h3 style={{ marginTop: 0 }}>Recent (from Excel)</h3>
-		<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+     	<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
 		  <h3 style={{ marginTop: 0 }}>
 			{mode === "pending" ? "Pending updates (blank Status)" : "Recent (from Excel)"}
 		  </h3>
