@@ -811,63 +811,40 @@ export default function App() {
 
 
         {/* Mobile: stacked cards, NO horizontal scroll */}
-        {isMobile && (
-			  <div
-				style={{
-				  display: "grid",
-				  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-				  gap: 8
-				}}
-			  >
-				{recent.map((row, i) => {
-				  const isBlankStatus =
-					statusColumnIndex >= 0 &&
-					(row[statusColumnIndex] == null ||
-					  String(row[statusColumnIndex]).trim() === "");
+        {!isMobile && (
+		  <div className="recent-stack">
+			{recent.map((row, i) => {
+			  const isBlankStatus =
+				statusColumnIndex >= 0 &&
+				(row[statusColumnIndex] == null ||
+				 String(row[statusColumnIndex]).trim() === "");
 
-				  return (
-					<div
-					  key={i}
-					  className="mobile-card"
-					  style={{
-						background: isBlankStatus ? "#ffffff" : undefined
-					  }}
-					>
-					  <div
-						  className="mobile-row"
-						  style={{
-							display: "grid",
-							gridTemplateColumns: "1fr 1fr", // two columns
-							gap: "8px"
-						  }}
-						>
-						  {recentVisibleIdxs.map((j) => {
-							const header = CONFIG.colMapping[j].header;
-							const cell = row[j];
-							const val = prettyCell(cell, header);
-							return (
-							  <div
-								key={j}
-								className="mobile-kv"
-								style={{
-								  display: "flex",
-								  flexDirection: "column",
-								  gap: 2
-								}}
-							  >
-								<span className="k">{header}</span>
-								<span className="v" style={cellStyle(header, cell)}>
-								  {val}
-								</span>
-							  </div>
-							);
-						  })}
+			  return (
+				<div
+				  key={i}
+				  className="recent-card"
+				  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+				>
+				  <div className="recent-fields">
+					{recentVisibleIdxs.map((j) => {
+					  const header = CONFIG.colMapping[j].header;
+					  const cell = row[j];
+					  const val = prettyCell(cell, header);
+					  return (
+						<div key={j} className="rf">
+						  <span className="k">{header}:</span>
+						  <span className="v" style={cellStyle(header, cell)}>
+							{val || "-"}
+						  </span>
 						</div>
-					</div>
-				  );
-				})}
-			  </div>
-			)}
+					  );
+					})}
+				  </div>
+				</div>
+			  );
+			})}
+		  </div>
+		)}
 
       </Card>
 
