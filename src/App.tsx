@@ -512,19 +512,17 @@ export default function App() {
 	  setLoadingPending(true);
 	  try {
 		const rows = await listAllRows();
-
 		const sIdx = headerToIdx.get("Status")!;
-		const tIdx = headerToIdx.get("Ticker")!;
 		const inIdx = headerToIdx.get("In date")!;
+		const tickerIdx = headerToIdx.get("Ticker")!;
 
 		const blanks = rows
 		  .filter((r: any) => {
-			const row = r?.values?.[0] || [];
-			const s = row[sIdx];
-			const t = row[tIdx];
-			const statusBlank = s == null || String(s).trim() === "";
-			const hasTicker = t != null && String(t).trim() !== "";
-			return statusBlank && hasTicker;
+			const statusVal = r?.values?.[0]?.[sIdx];
+			const tickerVal = r?.values?.[0]?.[tickerIdx];
+			const statusEmpty = statusVal == null || String(statusVal).trim() === "";
+			const tickerFilled = tickerVal != null && String(tickerVal).trim() !== "";
+			return statusEmpty && tickerFilled;
 		  })
 		  .map((r: any) => {
 			const row = [...(r.values?.[0] || [])];
@@ -535,7 +533,7 @@ export default function App() {
 		  .sort((a, b) => {
 			const aDate = toJsDate(a.values[inIdx]);
 			const bDate = toJsDate(b.values[inIdx]);
-			return (bDate ? bDate.getTime() : -Infinity) - (aDate ? aDate.getTime() : -Infinity);
+			return (bDate ? +bDate : -Infinity) - (aDate ? +aDate : -Infinity);
 		  });
 
 		setPending(blanks);
@@ -546,6 +544,7 @@ export default function App() {
 		setLoadingPending(false);
 	  }
 	}
+
 
 	//function for editing open positions
 	async function updateRowFields(
