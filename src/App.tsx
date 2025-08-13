@@ -941,7 +941,7 @@ export default function App() {
 				</button>
 			  ) : (
 				<button
-				  style={btn()}
+				  style={btn(), paddingBottom: 8}
 				  {...btnHoverProps()}
 				  onClick={fetchPending}
 				  disabled={!account || loadingPending}
@@ -995,7 +995,7 @@ export default function App() {
 					  </div>
 
 					  {mode === "pending" && (
-						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingBottom: 10 }}>
+						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingBottom: 6 }}>
 						  <button
 							style={btn("#eee", "#111")}
 							{...btnHoverProps()}
