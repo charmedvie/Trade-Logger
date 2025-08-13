@@ -511,7 +511,7 @@ export default function App() {
 	  setErr("");
 	  setLoadingPending(true);
 	  try {
-		// 1) Get actual column indexes from Excel (name → index)
+		// Get real column positions from Excel
 		const cols = await graphFetch(
 		  `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/columns?$select=name,index`,
 		  { method: "GET" }
@@ -519,51 +519,37 @@ export default function App() {
 		const colIdx = new Map<string, number>();
 		(cols.value || []).forEach((c: any) => colIdx.set(String(c.name).trim(), c.index));
 
-		// Resolve the three columns we need, fail loudly if missing
 		const sIdx = colIdx.get("Status");
 		const tIdx = colIdx.get("Ticker");
 		const inIdx = colIdx.get("In date");
 		if (sIdx == null || tIdx == null || inIdx == null) {
-		  throw new Error(
-			`Missing required columns: ${
-			  [sIdx == null && "Status", tIdx == null && "Ticker", inIdx == null && "In date"]
-				.filter(Boolean)
-				.join(", ")
-			}`
-		  );
+		  throw new Error("Missing one or more required columns: Status, Ticker, In date.");
 		}
 
-		// 2) Pull all rows and filter by: Status blank AND Ticker non-empty
 		const rows = await listAllRows();
-		const pendingRows = rows
+
+		const blanks = rows
 		  .filter((r: any) => {
 			const row = r?.values?.[0] || [];
-			const statusVal = row[sIdx];
-			const tickerVal = row[tIdx];
-			const statusEmpty =
-			  statusVal == null ||
-			  String(statusVal).replace(/\u00a0/g, " ").trim() === ""; // also strip NBSP
-			const tickerFilled =
-			  tickerVal != null &&
-			  String(tickerVal).replace(/\u00a0/g, " ").trim() !== "";
-			return statusEmpty && tickerFilled;
+			const s = row[sIdx];
+			const t = row[tIdx];
+			const statusBlank = s == null || String(s).replace(/\u00a0/g, " ").trim() === "";
+			const hasTicker = t != null && String(t).replace(/\u00a0/g, " ").trim() !== "";
+			return statusBlank && hasTicker;
 		  })
 		  .map((r: any) => {
 			const row = [...(r.values?.[0] || [])];
 			const d = toJsDate(row[inIdx]);
-			row[inIdx] = fmtDDMMMYYYY(d); // display-friendly date
+			row[inIdx] = fmtDDMMMYYYY(d);
 			return { index: r.index, values: row };
 		  })
-		  // 3) Sort newest In date first
 		  .sort((a, b) => {
 			const aDate = toJsDate(a.values[inIdx]);
 			const bDate = toJsDate(b.values[inIdx]);
-			const at = aDate ? aDate.getTime() : -Infinity;
-			const bt = bDate ? bDate.getTime() : -Infinity;
-			return bt - at;
+			return (bDate ? bDate.getTime() : -Infinity) - (aDate ? aDate.getTime() : -Infinity);
 		  });
 
-		setPending(pendingRows);
+		setPending(blanks);
 		setMode("pending");
 	  } catch (e: any) {
 		setErr(e.message || String(e));
@@ -571,7 +557,6 @@ export default function App() {
 		setLoadingPending(false);
 	  }
 	}
-
 
 
 	//function for editing open positions
