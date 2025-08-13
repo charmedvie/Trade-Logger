@@ -930,7 +930,7 @@ export default function App() {
 			<h3 style={{ marginTop: 0 }}>
 			  {mode === "pending" ? "Open positions" : "Recent trades"}
 			</h3>
-			<div style={{ display: "flex", gap: 8 }}>
+			<div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
 			  {mode === "pending" ? (
 				<button
 				  style={btn("#eee", "#111")}
