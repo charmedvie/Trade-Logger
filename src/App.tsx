@@ -271,8 +271,8 @@ export default function App() {
 
   // Defaults
   const defaultForm = () => ({
-    type: "Stock option",
-    acc: "527",
+    type: "",
+    acc: "",
     inDate: new Date().toISOString().slice(0, 10),
     ticker: "",
     strike: "",
