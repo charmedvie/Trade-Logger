@@ -11,9 +11,7 @@ type OptionSide = {
   bid?: number | null;
   ask?: number | null;
   delta?: number | null;
-  iv?: number | null;        // % (e.g., 24.5)
-  gamma?: number | null;     // per share, if provided by API
-  // NOTE: all OI/volume fields removed by request
+  iv?: number | null;     // % (e.g., 24.5)
 };
 
 type ExpirySlice = { expiry: string; options: OptionSide[] };
@@ -21,13 +19,13 @@ type ExpirySlice = { expiry: string; options: OptionSide[] };
 type YieldRow = {
   strike: number;
   bid: number;
-  yieldPct: number;          // %
-  probOTM: number;           // %
-  yieldGoalPct: number;      // %
-  vsGoalBps: number;         // bps (+/-)
-  dte: number;               // days
+  yieldPct: number;   // %
+  probOTM: number;    // %
+  yieldGoalPct: number; // %
+  vsGoalBps: number;    // basis points (can be +/-)
+  dte: number;        // days
   delta?: number | null;
-  iv?: number | null;        // %
+  iv?: number | null; // %
   expiry: string;
   side: Side;
 };
@@ -72,6 +70,8 @@ function erf(x: number) {
 }
 
 /* ---------- Black–Scholes components (forward-based d2) ---------- */
+// Probability an option finishes OTM using forward-based d2.
+// Inputs: ivFrac is decimal (e.g., 0.24), Tyears in years, r = risk-free, q = dividend yield.
 function probOTM_forward(
   side: Side, S: number, K: number, ivFrac: number, Tyears: number, r = DEFAULT_RISK_FREE, q = DEFAULT_DIVIDEND_YIELD
 ): number | null {
@@ -174,10 +174,9 @@ export default function App() {
     }
   };
 
-  /* ---------- Simple Stock IV estimate (kept) ---------- */
+  /* ---------- Simple Stock IV estimate (unchanged) ---------- */
   const stockIvPct = useMemo(() => {
     if (!expiries.length || uPrice == null) return null;
-    // nearest expiry to "now"
     const now = nowMs();
     let best: { ex: ExpirySlice; dte: number } | null = null;
     for (const ex of expiries) {
@@ -209,7 +208,7 @@ export default function App() {
     return Math.round((ivs.reduce((a, b) => a + b, 0) / ivs.length) * 100) / 100;
   }, [expiries, uPrice]);
 
-  /* ---------- Derived: Top Yields (OTM only) — PUTS ONLY ---------- */
+  /* ---------- Derived: Top Yields (PUTS ONLY), with Vs-goal ---------- */
   const topPuts = useMemo(() => {
     if (!expiries.length || uPrice == null) return null;
 
@@ -247,7 +246,7 @@ export default function App() {
         for (const o of near.ex.options) {
           if (typeof o.strike === "number" && o.strike > 0 && typeof o.iv === "number" && o.iv > 0) {
             if (!tmp.has(o.strike)) tmp.set(o.strike, []);
-            tmp.get(o.strike)!.push(o.iv / 100);
+            tmp.get(o.strike)!.push(o.iv / 100); // store as fraction
           }
         }
         for (const [K, arr] of tmp.entries()) {
@@ -261,7 +260,7 @@ export default function App() {
         if (typeof o.bid !== "number" || o.bid <= 0) continue;
         if (typeof o.strike !== "number" || o.strike <= 0) continue;
 
-        // OTM only for puts: strike < spot
+        // OTM only
         if (!(o.strike < uPrice)) continue;
 
         // Resolve IV (fraction)
@@ -279,7 +278,7 @@ export default function App() {
         const yieldPct = (o.bid / o.strike) * 100;
 
         // Yield goal & vs goal (bps)
-        const yieldGoalPct = yieldGoalByDTE(near.dte);
+        const yieldGoalPct = yieldGoalByDTE(near.dte); // percent value, e.g., 0.40
         const vsGoalBps = (yieldPct - yieldGoalPct) * 100; // 1% = 100 bps
 
         const row: YieldRow = {
@@ -291,7 +290,7 @@ export default function App() {
           vsGoalBps,
           dte: near.dte,
           delta: o.delta,
-          iv: typeof o.iv === "number" && o.iv > 0 ? o.iv : Math.round(ivFrac * 10000) / 100, // %
+          iv: typeof o.iv === "number" && o.iv > 0 ? o.iv : Math.round(ivFrac * 10000) / 100, // store as %
           expiry: near.ex.expiry,
           side: o.type,
         };
@@ -311,29 +310,18 @@ export default function App() {
     return putsTop;
   }, [expiries, uPrice]);
 
-  /* ---------- Gradient styling (entire row, softer greens) ---------- */
-  const rowGradient = (() => {
-    function clamp(x: number, a: number, b: number) { return Math.min(b, Math.max(a, x)); }
-    function lerp(a: number, b: number, t: number) { return a + (b - a) * t; }
-    function minMax(rows: YieldRow[]) {
-      if (!rows.length) return { min: 0, max: 0 };
-      let min = rows[0].vsGoalBps, max = rows[0].vsGoalBps;
-      for (const r of rows) { if (r.vsGoalBps < min) min = r.vsGoalBps; if (r.vsGoalBps > max) max = r.vsGoalBps; }
-      return { min, max };
-    }
-    function style(v: number, min: number, max: number) {
-      const t = max > min ? clamp((v - min) / (max - min), 0, 1) : 0.5;
-      // softer palette than before
-      const l = lerp(94, 82, t);   // lightness 94% -> 82%
-      const s = lerp(38, 48, t);   // saturation 38% -> 48%
-      const bg = `hsl(140 ${s}% ${l}%)`;
-      // text stays dark for readability on soft greens
-      return { background: bg } as const;
-    }
-    return { minMax, style };
-  })();
+  /* ---------- Row gradient (soft greens) based on Vs goal (bps) ---------- */
+  function rowStyle(v: number, min: number, max: number) {
+    const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const t = max > min ? clamp((v - min) / (max - min), 0, 1) : 0.5;
+    // softer than before: very light mint -> soft green
+    const l = lerp(96, 86, t);  // lightness 96% -> 86%
+    const s = lerp(28, 40, t);  // saturation 28% -> 40%
+    return { background: `hsl(140 ${s}% ${l}%)` } as const;
+  }
 
-  /* ---------- Active expiry rows for the chain ---------- */
+  /* ---------- Active expiry rows for the chain (unchanged) ---------- */
   const rows = useMemo(() => {
     const ex = expiries[activeIdx];
     if (!ex) return [] as { strike: number; call: OptionSide | null; put: OptionSide | null }[];
@@ -372,7 +360,7 @@ export default function App() {
             padding: "10px 14px",
             borderRadius: 10,
             border: "1px solid #c7e9d8",
-            background: "#eaf7f0", // pastel green
+            background: "#eaf7f0",
             color: "#0f5132",
             cursor: loading || !symbol.trim() ? "not-allowed" : "pointer",
           }}
@@ -386,7 +374,7 @@ export default function App() {
             padding: "10px 14px",
             borderRadius: 10,
             border: "1px solid #cfe2ff",
-            background: "#eef5ff", // pastel blue
+            background: "#eef5ff",
             color: "#084298",
             cursor: loading || !symbol.trim() ? "not-allowed" : "pointer",
           }}
@@ -400,7 +388,7 @@ export default function App() {
               marginLeft: 12,
               padding: "6px 10px",
               borderRadius: 8,
-              background: "#fff3cd", // pastel amber
+              background: "#fff3cd",
               color: "#7a5d00",
               border: "1px solid #ffe69c",
               fontWeight: 600,
@@ -418,12 +406,12 @@ export default function App() {
       {/* ---- Yields ONLY (PUTS ONLY) ---- */}
       {view === "yields" && topPuts && uPrice != null && (
         <div className="yields-panel" style={{ marginTop: 12 }}>
-          {/* Data timestamp */}
+          {/* Timestamp only (as you asked earlier) */}
           <div className="y-meta" style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
             Data timestamp: <strong>{dataTimestamp ?? new Date().toLocaleString()}</strong>
           </div>
 
-          {/* Simple Stock IV box (kept) */}
+          {/* Simple Stock IV box */}
           <div
             style={{
               display: "grid",
@@ -440,13 +428,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Puts table only with row gradient on Vs goal */}
+          {/* Puts table only, entire row uses soft green gradient by Vs goal */}
           <div className="yields-grid">
             <div className="yield-card">
               <h4><span className="y-badge">Puts (Top 10)</span></h4>
               {(() => {
                 const puts = topPuts ?? [];
-                // compute min/max for gradient
                 let min = 0, max = 0;
                 if (puts.length) {
                   min = puts[0].vsGoalBps; max = puts[0].vsGoalBps;
@@ -472,7 +459,7 @@ export default function App() {
                     <tbody>
                       {puts.length ? (
                         puts.map((r) => (
-                          <tr key={`p-${r.expiry}-${r.strike}`} style={rowGradient.style(r.vsGoalBps, min, max)}>
+                          <tr key={`p-${r.expiry}-${r.strike}`} style={rowStyle(r.vsGoalBps, min, max)}>
                             <td style={{ textAlign: "left" }}>{r.strike}</td>
                             <td>{r.dte}</td>
                             <td>{fmtNum(r.bid)}</td>
@@ -480,9 +467,7 @@ export default function App() {
                             <td>{fmtPct(r.yieldPct)}%</td>
                             <td>{fmt0(r.probOTM)}%</td>
                             <td>{fmtPct(r.yieldGoalPct)}%</td>
-                            <td>
-                              {(Math.round(r.vsGoalBps) >= 0 ? "+" : "") + Math.round(r.vsGoalBps) + " bps"}
-                            </td>
+                            <td>{(Math.round(r.vsGoalBps) >= 0 ? "+" : "") + Math.round(r.vsGoalBps) + " bps"}</td>
                           </tr>
                         ))
                       ) : (
