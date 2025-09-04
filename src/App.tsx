@@ -1,596 +1,1427 @@
-import { useMemo, useState } from "react";
-import "./App.css";
+// Trade Logger PWA – React single-file app (mobile-first)
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { PublicClientApplication } from "@azure/msal-browser";
 
-/* ---------- Types ---------- */
-type Side = "call" | "put";
-
-type OptionSide = {
-  strike: number;
-  type: Side;
-  last?: number | null;
-  bid?: number | null;
-  ask?: number | null;
-  delta?: number | null;
-  iv?: number | null;     // % (e.g., 24.5)
+// -------------------- CONFIG --------------------
+const CONFIG = {
+  clientId: "19a3021d-6ea2-4436-8a84-e73362b14135",
+  authority: "https://login.microsoftonline.com/consumers",
+  redirectUri: "https://trade-logger-omega.vercel.app/",
+  filePath: "/Trade/Log1.xlsx",
+  tableName: "Tradelog",
+  colMapping: [
+    { key: "type", header: "Type" },
+    { key: "acc", header: "Acc" },
+    { key: "inDate", header: "In date" },
+    { key: "ticker", header: "Ticker" },
+    { key: "strike", header: "Strike" },
+    { key: "position", header: "Position" },
+    { key: "avgPrice", header: "Avg price" },
+    { key: "costBasis", header: "Cost Basis" },
+    { key: "margin", header: "Margin" },
+    { key: "fees", header: "Fees" },
+    { key: "expDate", header: "Exp date" },
+    { key: "status", header: "Status" },
+    { key: "outDate", header: "Out date" },
+    { key: "outWk", header: "Out wk" },
+    { key: "outYr", header: "Out YR" },
+    { key: "exitPrice", header: "Exit price" },
+    { key: "proceeds", header: "Proceeds" },
+    { key: "pnl", header: "P&L" },
+    { key: "tradeType", header: "Trade type" },
+    { key: "roiCb", header: "ROI cb" },
+    { key: "roi", header: "Roi" },
+    { key: "time", header: "Time" },
+    { key: "term", header: "Term" },
+    { key: "notes", header: "Notes" },
+  ],
 };
 
-type ExpirySlice = { expiry: string; options: OptionSide[] };
+// Excel-calculated columns
+const FORMULA_COLS = new Set([
+  "Cost Basis",
+  "Margin",
+  "Out wk",
+  "Out YR",
+  "Proceeds",
+  "P&L",
+  "ROI cb",
+  "Roi",
+  "Time",
+  "Term",
+]);
 
-type YieldRow = {
-  strike: number;
-  bid: number;
-  yieldPct: number;   // %
-  probOTM: number;    // %
-  yieldGoalPct: number; // %
-  vsGoalBps: number;    // basis points (can be +/-)
-  dte: number;        // days
-  delta?: number | null;
-  iv?: number | null; // %
-  expiry: string;
-  side: Side;
+// Dropdown sources
+const LIST_COL_TABLE: Record<string, string> = {
+  Type: "Typelist",
+  Acc: "Acclist",
+  "Trade type": "Tradetypelist",
+  Status: "Statuslist",
 };
 
-type ViewMode = "yields" | "chain" | null;
+// ⬇️ EXACT columns to show in "Recent (from Excel)"
+const SHOW_IN_RECENT = new Set([
+  "Type",
+  "In date",
+  "Ticker",
+  "Strike",
+  "Position",
+  "Avg price",
+  "Status",
+  "P&L",
+]);
 
-/* ---------- Constants ---------- */
-const DTE_BUCKETS = [7, 14, 21, 30] as const;
-const MIN_PROB_OTM = 60; // %
-const DEFAULT_RISK_FREE = 0.04; // r (annualised)
-const DEFAULT_DIVIDEND_YIELD = 0.0; // q (annualised)
-
-/* ---------- Utils ---------- */
-const nowMs = () => Date.now();
-const daysBetween = (a: number, b: number) => Math.max(0, Math.ceil((b - a) / 86400000));
-const fmtNum = (n?: number | null) => (typeof n === "number" && isFinite(n) ? String(n) : "—");
-const fmtPct = (n?: number | null) =>
-  typeof n === "number" && isFinite(n) ? String(Math.round(n * 100) / 100) : "—";
-const fmtDelta = (n?: number | null) =>
-  typeof n === "number" && isFinite(n) ? (Math.round(n * 100) / 100).toFixed(2) : "—";
-const fmt0 = (n?: number | null) =>
-  typeof n === "number" && isFinite(n) ? String(Math.round(n)) : "—";
-const uniqKey = (r: YieldRow) => `${r.side}|${r.expiry}|${r.strike}`;
-
-/* ------ Yield goal helpers (percent values, e.g., 0.40 for 0.40%) ------ */
-function yieldGoalByDTE(dte: number): number {
-  if (dte >= 22 && dte <= 31) return 0.40;
-  if (dte >= 15 && dte <= 21) return 0.30;
-  if (dte >= 8  && dte <= 14) return 0.18;
-  return 0.09; // 0–7 DTE (and anything else)
+function getRecentVisibleIndices() {
+  return CONFIG.colMapping
+    .map((c, i) => (SHOW_IN_RECENT.has(c.header) ? i : -1))
+    .filter((i) => i !== -1);
 }
 
-/* ---------- Normal CDF / erf ---------- */
-function normCdf(x: number) {
-  return 0.5 * (1 + erf(x / Math.SQRT2));
-}
-function erf(x: number) {
-  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741, a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
-  const sign = x < 0 ? -1 : 1, ax = Math.abs(x), t = 1 / (1 + p * ax);
-  const y = 1 - (((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t) * Math.exp(-ax * ax);
-  return sign * y;
-}
+// -------------------- MSAL + Graph --------------------
+const msal = new PublicClientApplication({
+  auth: {
+    clientId: CONFIG.clientId,
+    authority: CONFIG.authority,
+    redirectUri: CONFIG.redirectUri,
+    navigateToLoginRequestUrl: false,
+  },
+  cache: { cacheLocation: "localStorage", storeAuthStateInCookie: true },
+});
 
-/* ---------- Black–Scholes components (forward-based d2) ---------- */
-// Probability an option finishes OTM using forward-based d2.
-// Inputs: ivFrac is decimal (e.g., 0.24), Tyears in years, r = risk-free, q = dividend yield.
-function probOTM_forward(
-  side: Side, S: number, K: number, ivFrac: number, Tyears: number, r = DEFAULT_RISK_FREE, q = DEFAULT_DIVIDEND_YIELD
-): number | null {
-  if (![S, K, ivFrac, Tyears].every((v) => typeof v === "number" && v > 0)) return null;
-  const sigma = Math.max(ivFrac, 0.01);
-  const T = Math.max(Tyears, 1 / 365);
-  const F = S * Math.exp((r - q) * T);
-  const d2 = (Math.log(F / K) - 0.5 * sigma * sigma * T) / (sigma * Math.sqrt(T));
-  const Nd2 = normCdf(d2);
-  return side === "call" ? normCdf(-d2) : Nd2;
+async function ensureMsalInitialized() {
+  await msal.initialize();
 }
 
-/* ---------- IV interpolation in log-moneyness (per expiry) ---------- */
-// Returns iv as a FRACTION (e.g., 0.24) or null if impossible.
-function interpolateIV_logMoneyness(
-  S: number,
-  points: Array<{ K: number; ivFrac: number }>,
-  targetK: number
-): number | null {
-  const pts = points
-    .filter(p => isFinite(p.K) && p.K > 0 && isFinite(p.ivFrac) && p.ivFrac > 0)
-    .map(p => ({ x: Math.log(p.K / S), y: p.ivFrac }))
-    .sort((a, b) => a.x - b.x);
-  if (pts.length === 0 || !isFinite(targetK) || targetK <= 0) return null;
+async function getAccessToken() {
+  const accounts = msal.getAllAccounts();
+  const request = {
+    scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+    account: accounts[0],
+  };
+  try {
+    const res = await msal.acquireTokenSilent(request);
+    return res.accessToken;
+  } catch {
+    const res = await msal.acquireTokenPopup({ ...request, redirectUri: CONFIG.redirectUri });
+    return res.accessToken;
+  }
+}
 
-  const tx = Math.log(targetK / S);
-  for (const p of pts) if (Math.abs(p.x - tx) < 1e-12) return p.y;
-  if (tx <= pts[0].x) return pts[0].y;
-  if (tx >= pts[pts.length - 1].x) return pts[pts.length - 1].y;
-  for (let i = 1; i < pts.length; i++) {
-    const L = pts[i - 1], R = pts[i];
-    if (tx >= L.x && tx <= R.x) {
-      const t = (tx - L.x) / (R.x - L.x);
-      return L.y + t * (R.y - L.y);
-    }
+async function graphFetch(path: string, options: any = {}) {
+  const token = await getAccessToken();
+  const url = /^https?:\/\//i.test(path) ? path : `https://graph.microsoft.com/v1.0${path}`;
+  const res = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status} ${res.statusText}: ${text}`);
+  }
+  return res.json();
+}
+
+async function listAllRows() {
+  let url = `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=5000`;
+  const rows: any[] = [];
+  while (url) {
+    const page = await graphFetch(url);
+    rows.push(...(page.value || []));
+    url = page["@odata.nextLink"] || "";
+  }
+  return rows;
+}
+
+
+function wbPath() {
+  return `/me/drive/root:${encodeURI(CONFIG.filePath)}:/workbook`;
+}
+
+async function listRows(top = 20) {
+  return graphFetch(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=${top}`,
+    { method: "GET" }
+  );
+}
+async function addRow(valuesArray: any[]) {
+  return graphFetch(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/add`,
+    { method: "POST", body: JSON.stringify({ index: null, values: [valuesArray] }) }
+  );
+}
+function _isBlank(v: any) {
+  return v === null || String(v).trim() === "";
+}
+async function findFirstBlankRowIndex(top = 1000) {
+  const data = await listRows(top);
+  const rows = data.value || [];
+  const inDateIdx = CONFIG.colMapping.findIndex((c) => c.header === "In date");
+  if (inDateIdx < 0) return null;
+  for (let i = 0; i < rows.length; i++) {
+    const vals = rows[i]?.values?.[0] || [];
+    if (_isBlank(vals[inDateIdx])) return i;
   }
   return null;
 }
+async function patchRowAtIndex(index: number, rowValues: any[]) {
+  const values = CONFIG.colMapping.map((c, i) => (FORMULA_COLS.has(c.header) ? null : rowValues[i] ?? ""));
+  return graphFetch(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/itemAt(index=${index})/range`,
+    { method: "PATCH", body: JSON.stringify({ values: [values] }) }
+  );
+}
 
-/* ---------- Component ---------- */
+// Session utils
+async function createSession(persist = false) {
+  const token = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0${wbPath()}/createSession`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ persistChanges: persist }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const j = await res.json();
+  return j.id as string;
+}
+async function graphFetchSession(path: string, options: any = {}, sessionId: string) {
+  const token = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      "workbook-session-id": sessionId,
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  if (res.status === 204) return {};
+  const txt = await res.text();
+  return txt ? JSON.parse(txt) : {};
+}
+async function addRowInSession(valuesArray: any[], sessionId: string) {
+  return graphFetchSession(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/add`,
+    { method: "POST", body: JSON.stringify({ index: null, values: [valuesArray] }) },
+    sessionId
+  );
+}
+async function calculateInSession(sessionId: string) {
+  return graphFetchSession(
+    `${wbPath()}/application/calculate`,
+    { method: "POST", body: JSON.stringify({ calculationType: "Full" }) },
+    sessionId
+  );
+}
+async function getRowByIndexInSession(index: number, sessionId: string) {
+  return graphFetchSession(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/itemAt(index=${index})`,
+    { method: "GET" },
+    sessionId
+  );
+}
+async function findFirstBlankRowIndexInSession(sessionId: string, top = 1000) {
+  const data = await graphFetchSession(
+    `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=${top}`,
+    { method: "GET" },
+    sessionId
+  );
+  const rows = (data as any).value || [];
+  const inDateIdx = CONFIG.colMapping.findIndex((c) => c.header === "In date");
+  if (inDateIdx < 0) return null;
+  for (let i = 0; i < rows.length; i++) {
+    const vals = rows[i]?.values?.[0] || [];
+    if (_isBlank(vals[inDateIdx])) return i;
+  }
+  return null;
+}
+async function fetchListOptions(tableName: string) {
+  const data = await graphFetch(
+    `${wbPath()}/tables('${encodeURIComponent(tableName)}')/rows`,
+    { method: "GET" }
+  );
+  return ((data.value || []) as any[]).map((r) => r.values[0][0]);
+}
+
+// -------------------- App --------------------
 export default function App() {
-  const [symbol, setSymbol] = useState("");
-  const [price, setPrice] = useState<number | null>(null);
-  const [currency, setCurrency] = useState<string | null>(null);
+  const [account, setAccount] = useState<any>(null);
+  const [recent, setRecent] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [listOptions, setListOptions] = useState<Record<string, string[]>>({});
+  const [preview, setPreview] = useState<{ headers: string[]; values: any[] } | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const msgRef = useRef<HTMLDivElement | null>(null);
+  const statusColumnIndex = CONFIG.colMapping.findIndex(
+    (c) => c.header.toLowerCase() === "status");
+  const [mode, setMode] = useState<"normal" | "pending">("normal");
+  const [pending, setPending] = useState<Array<{ index: number; values: any[] }>>([]);
+  const [loadingPending, setLoadingPending] = useState(false);
 
-  const [loading, setLoading] = useState(false);     // one loader for flows
-  const [chainErr, setChainErr] = useState("");
-  const [expiries, setExpiries] = useState<ExpirySlice[]>([]);
-  const [uPrice, setUPrice] = useState<number | null>(null);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [view, setView] = useState<ViewMode>(null);
-  const [dataTimestamp, setDataTimestamp] = useState<string | null>(null);
+	const headerToIdx = useMemo(() => {
+	  const m = new Map<string, number>();
+	  CONFIG.colMapping.forEach((c, i) => m.set(c.header, i));
+	  return m;
+	}, []);
+	const [editRow, setEditRow] = useState<null | {
+		  index: number;
+		  status: string;
+		  outDate: string;
+		  exitPrice: string;
+		  fees: string;
+		}>(null);
 
-  /* ---------- Actions ---------- */
-  const updateQuote = async (s: string) => {
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= 640);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  
+ 	useEffect(() => {
+	  function onKey(e) {
+		if (e.key === "Escape") setEditRow(null);
+	  }
+	  if (editRow) window.addEventListener("keydown", onKey);
+	  return () => window.removeEventListener("keydown", onKey);
+	}, [editRow]);
+  
+  useEffect(() => {
+  if (err || notice) {
+    // after paint so the element exists
+    setTimeout(() => {
+      msgRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+	  msgRef.current?.focus({ preventScroll: true });
+    }, 0);
+  }
+}, [err, notice]);
+
+  // Defaults
+  const defaultForm = () => ({
+    type: "",
+    acc: "",
+    inDate: new Date().toISOString().slice(0, 10),
+    ticker: "",
+    strike: "",
+    position: "",
+    avgPrice: "",
+    fees: "0",
+    expDate: "",
+    status: "",
+    outDate: "",
+    outWk: "",
+    outYr: "",
+    exitPrice: "",
+    proceeds: "",
+    pnl: "",
+    tradeType: "CC",
+    roiCb: "",
+    roi: "",
+    time: "",
+    term: "",
+    notes: "",
+    costBasis: "",
+    margin: "",
+  });
+  const [form, setForm] = useState(defaultForm());
+
+  const OUT_FIELDS = useMemo(() => new Set(["Out date", "Status", "Exit price"]), []);
+  const [showOut, setShowOut] = useState(false);
+
+  // Init + load
+  useEffect(() => {
+    (async () => {
+      await ensureMsalInitialized();
+      const resp = await msal.handleRedirectPromise();
+      if (resp?.account) {
+        msal.setActiveAccount(resp.account);
+        setAccount(resp.account);
+      } else {
+        const accs = msal.getAllAccounts();
+        if (accs.length) {
+          msal.setActiveAccount(accs[0]);
+          setAccount(accs[0]);
+        }
+      }
+      if (msal.getActiveAccount()) {
+        await Promise.all([refresh(), loadLists()]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fields/columns
+  const headers = useMemo(() => CONFIG.colMapping.map((c) => c.header), []);
+  const editableCols = useMemo(
+    () => CONFIG.colMapping.filter((c) => !FORMULA_COLS.has(c.header)),
+    []
+  );
+  const mainFields = useMemo(
+    () => editableCols.filter((c) => !OUT_FIELDS.has(c.header)),
+    [editableCols, OUT_FIELDS]
+  );
+  const outFields = useMemo(
+    () => editableCols.filter((c) => OUT_FIELDS.has(c.header)),
+    [editableCols, OUT_FIELDS]
+  );
+
+  // Recent visible columns
+  const recentVisibleIdxs = useMemo(() => getRecentVisibleIndices(), []);
+
+  // --- Data ops ---
+  async function refresh() {
     setErr("");
     try {
-      const res = await fetch(`/api/quote?symbol=${encodeURIComponent(s)}`);
-      const text = await res.text();
-      if (!res.ok) throw new Error(text);
-      const json = JSON.parse(text);
-      if (typeof json?.price !== "number") throw new Error("Price not found");
-      setPrice(json.price);
-      setCurrency(json.currency ?? null);
+      const data = await listRows(5000);
+      const inDateIdx = CONFIG.colMapping.findIndex((c) => c.header === "In date");
+      const sorted = (data.value || [])
+        .slice()
+        .sort((a: any, b: any) => {
+          const aDate = toJsDate(a.values[0][inDateIdx]);
+          const bDate = toJsDate(b.values[0][inDateIdx]);
+          const at = aDate ? aDate.getTime() : -Infinity;
+          const bt = bDate ? bDate.getTime() : -Infinity;
+          return bt - at;
+        })
+        .slice(0, 20)
+        .map((r: any) => {
+          const row = [...r.values[0]];
+          const d = toJsDate(row[inDateIdx]);
+          row[inDateIdx] = fmtDDMMMYYYY(d);
+          return row;
+        });
+      setRecent(sorted);
     } catch (e: any) {
-      setPrice(null);
-      setCurrency(null);
-      throw new Error(e?.message || "Quote fetch failed");
+      setErr(e.message || String(e));
     }
-  };
-
-  const fetchOptions = async (s: string) => {
-    const url = `/api/options?symbol=${encodeURIComponent(s)}`;
-    const res = await fetch(url);
-    const text = await res.text();
-    if (!res.ok) throw new Error(text);
-    const json = JSON.parse(text);
-    if (!json?.expiries?.length) throw new Error("No options data found.");
-    setUPrice(typeof json.underlierPrice === "number" ? json.underlierPrice : null);
-    setExpiries(json.expiries);
-  };
-
-  const runFlow = async (targetView: ViewMode) => {
-    const s = symbol.trim().toUpperCase();
-    setSymbol(s);
-    if (!s) return setErr("Enter a ticker first.");
-    setLoading(true);
-    setChainErr("");
-    try {
-      await updateQuote(s);
-      await fetchOptions(s);
-      setView(targetView);
-      setActiveIdx(0);
-      setDataTimestamp(new Date().toLocaleString());
-    } catch (e: any) {
-      setChainErr(e?.message || "Options fetch failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ---------- Simple Stock IV estimate (unchanged) ---------- */
-  const stockIvPct = useMemo(() => {
-    if (!expiries.length || uPrice == null) return null;
-    const now = nowMs();
-    let best: { ex: ExpirySlice; dte: number } | null = null;
-    for (const ex of expiries) {
-      const dte = daysBetween(now, Date.parse(ex.expiry));
-      if (!best || dte < best.dte) best = { ex, dte };
-    }
-    if (!best) return null;
-
-    let nearestCallIv: number | null = null;
-    let nearestPutIv: number | null = null;
-    let minDiffCall = Infinity, minDiffPut = Infinity;
-
-    for (const o of best.ex.options) {
-      if (typeof o.strike !== "number" || o.strike <= 0) continue;
-      const diff = Math.abs(o.strike - uPrice);
-      if (o.type === "call" && diff < minDiffCall) {
-        minDiffCall = diff;
-        nearestCallIv = typeof o.iv === "number" ? o.iv : null;
-      }
-      if (o.type === "put" && diff < minDiffPut) {
-        minDiffPut = diff;
-        nearestPutIv = typeof o.iv === "number" ? o.iv : null;
-      }
-    }
-    const ivs: number[] = [];
-    if (nearestCallIv != null) ivs.push(nearestCallIv);
-    if (nearestPutIv != null) ivs.push(nearestPutIv);
-    if (!ivs.length) return null;
-    return Math.round((ivs.reduce((a, b) => a + b, 0) / ivs.length) * 100) / 100;
-  }, [expiries, uPrice]);
-
-  /* ---------- Derived: Top Yields (PUTS ONLY), with Vs-goal ---------- */
-  const topPuts = useMemo(() => {
-    if (!expiries.length || uPrice == null) return null;
-
-    const now = nowMs();
-
-    // Precompute (expiry -> DTE) once
-    const expDte = expiries.map((ex) => ({
-      ex,
-      dte: daysBetween(now, Date.parse(ex.expiry)),
-    }));
-
-    // For each target DTE, select nearest expiry once
-    const nearestByBucket = new Map<number, { ex: ExpirySlice; dte: number }>();
-    for (const target of DTE_BUCKETS) {
-      let best = null as null | { ex: ExpirySlice; dte: number; diff: number };
-      for (const e of expDte) {
-        const diff = Math.abs(e.dte - target);
-        if (!best || diff < best.diff) best = { ex: e.ex, dte: e.dte, diff };
-      }
-      if (best) nearestByBucket.set(target, { ex: best.ex, dte: best.dte });
-    }
-
-    const putsAll: YieldRow[] = [];
-
-    for (const target of DTE_BUCKETS) {
-      const near = nearestByBucket.get(target);
-      if (!near) continue;
-
-      const Tyears = Math.max(1 / 365, near.dte / 365);
-
-      // Build IV points for this expiry (average across sides if duplicated)
-      const ivPoints: Array<{ K: number; ivFrac: number }> = [];
-      {
-        const tmp = new Map<number, number[]>();
-        for (const o of near.ex.options) {
-          if (typeof o.strike === "number" && o.strike > 0 && typeof o.iv === "number" && o.iv > 0) {
-            if (!tmp.has(o.strike)) tmp.set(o.strike, []);
-            tmp.get(o.strike)!.push(o.iv / 100); // store as fraction
-          }
-        }
-        for (const [K, arr] of tmp.entries()) {
-          const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
-          ivPoints.push({ K, ivFrac: mean });
-        }
-      }
-
-      for (const o of near.ex.options) {
-        if (o.type !== "put") continue; // PUTS ONLY
-        if (typeof o.bid !== "number" || o.bid <= 0) continue;
-        if (typeof o.strike !== "number" || o.strike <= 0) continue;
-
-        // OTM only
-        if (!(o.strike < uPrice)) continue;
-
-        // Resolve IV (fraction)
-        let ivFrac: number | null =
-          typeof o.iv === "number" && o.iv > 0 ? o.iv / 100 : interpolateIV_logMoneyness(uPrice, ivPoints, o.strike);
-        if (ivFrac == null || !isFinite(ivFrac) || ivFrac <= 0) continue;
-
-        // Prob OTM (forward-based d2 with r, q)
-        const p = probOTM_forward(o.type, uPrice, o.strike, ivFrac, Tyears, DEFAULT_RISK_FREE, DEFAULT_DIVIDEND_YIELD);
-        if (p == null) continue;
-        const probPct = p * 100;
-        if (probPct < MIN_PROB_OTM) continue;
-
-        // Yield (%)
-        const yieldPct = (o.bid / o.strike) * 100;
-
-        // Yield goal & vs goal (bps)
-        const yieldGoalPct = yieldGoalByDTE(near.dte); // percent value, e.g., 0.40
-        const vsGoalBps = (yieldPct - yieldGoalPct) * 100; // 1% = 100 bps
-
-        const row: YieldRow = {
-          strike: o.strike,
-          bid: o.bid,
-          yieldPct,
-          probOTM: probPct,
-          yieldGoalPct,
-          vsGoalBps,
-          dte: near.dte,
-          delta: o.delta,
-          iv: typeof o.iv === "number" && o.iv > 0 ? o.iv : Math.round(ivFrac * 10000) / 100, // store as %
-          expiry: near.ex.expiry,
-          side: o.type,
-        };
-
-        putsAll.push(row);
-      }
-    }
-
-    // dedupe & sort
-    const seen = new Set<string>();
-    const out: YieldRow[] = [];
-    for (const r of putsAll) {
-      const k = uniqKey(r);
-      if (!seen.has(k)) { seen.add(k); out.push(r); }
-    }
-    const putsTop = out.sort((a, b) => b.yieldPct - a.yieldPct).slice(0, 10);
-    return putsTop;
-  }, [expiries, uPrice]);
-
-  /* ---------- Row gradient (soft greens) based on Vs goal (bps) ---------- */
-  function rowStyle(v: number, min: number, max: number) {
-    const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
-    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    const t = max > min ? clamp((v - min) / (max - min), 0, 1) : 0.5;
-    // softer than before: very light mint -> soft green
-    const l = lerp(96, 86, t);  // lightness 96% -> 86%
-    const s = lerp(28, 40, t);  // saturation 28% -> 40%
-    return { background: `hsl(140 ${s}% ${l}%)` } as const;
   }
 
-  /* ---------- Active expiry rows for the chain (unchanged) ---------- */
-  const rows = useMemo(() => {
-    const ex = expiries[activeIdx];
-    if (!ex) return [] as { strike: number; call: OptionSide | null; put: OptionSide | null }[];
+  async function loadLists() {
+    try {
+      const entries = await Promise.all(
+        Object.entries(LIST_COL_TABLE).map(async ([header, table]) => [header, await fetchListOptions(table)])
+      );
+      setListOptions(Object.fromEntries(entries));
+    } catch (e: any) {
+      setErr(e.message || String(e));
+    }
+  }
 
-    const callsByStrike = new Map<number, OptionSide>();
-    const putsByStrike = new Map<number, OptionSide>();
-    for (const o of ex.options) (o.type === "call" ? callsByStrike : putsByStrike).set(o.strike, o);
+  function onChange(name: string, value: any) {
+    setForm((f) => ({ ...f, [name]: value }));
+  }
 
-    const strikes = Array.from(new Set([...callsByStrike.keys(), ...putsByStrike.keys()])).sort((a, b) => a - b);
+  function toValues() {
+    return CONFIG.colMapping.map((c) => (FORMULA_COLS.has(c.header) ? null : form[c.key as keyof typeof form] ?? ""));
+  }
 
-    return strikes.map((strike) => ({
-      strike,
-      call: callsByStrike.get(strike) ?? null,
-      put: putsByStrike.get(strike) ?? null,
-    }));
-  }, [expiries, activeIdx]);
+  async function save(e?: React.FormEvent) {
+    if (e && (e as any).preventDefault) (e as any).preventDefault();
+    setErr("");
+    setSaving(true);
+    try {
+      const values = toValues();
+      const blankIdx = await findFirstBlankRowIndex();
+      if (blankIdx !== null) {
+        await patchRowAtIndex(blankIdx, values);
+      } else {
+        await addRow(values);
+      }
+      await refresh();
+      setForm(defaultForm());
+      setPreview(null);
+      setNotice("Saved successfully ✅");
+      setTimeout(() => setNotice(""), 2000);
+    } catch (e: any) {
+      setErr(e.message || String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  /* ---------- Render ---------- */
+	async function patchRowAtIndexInSession(index, rowValues, sessionId) {
+	  const values = CONFIG.colMapping.map((c, i) =>
+		FORMULA_COLS.has(c.header) ? null : (rowValues[i] ?? "")
+	  );
+	  const path = `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows/itemAt(index=${index})/range`;
+	  return graphFetchSession(
+		path,
+		{ method: "PATCH", body: JSON.stringify({ values: [values] }) },
+		sessionId
+	  );
+	}
+
+  async function handlePreview() {
+    setErr("");
+    setPreview(null);
+    setPreviewBusy(true);
+    try {
+      const rowValues = toValues();
+      const sessionId = await createSession(false);
+      let blankIdx = await findFirstBlankRowIndexInSession(sessionId);
+      let targetIdx: number | null = null;
+
+      if (blankIdx !== null) {
+        await patchRowAtIndexInSession(blankIdx, rowValues as any[], sessionId);
+        targetIdx = blankIdx;
+      } else {
+        const added: any = await addRowInSession(rowValues as any[], sessionId);
+        targetIdx = added?.index ?? added?.value?.[0]?.index ?? null;
+      }
+
+      await calculateInSession(sessionId);
+      await new Promise((r) => setTimeout(r, 300));
+
+      let row: any[] = [];
+      if (targetIdx !== null) {
+        const got: any = await getRowByIndexInSession(targetIdx, sessionId);
+        row = got?.values?.[0] || got?.value?.[0]?.values?.[0] || [];
+      } else {
+        const recent = (await graphFetchSession(
+          `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/rows?$top=1&$orderby=index desc`,
+          { method: "GET" },
+          sessionId
+        )) as any;
+        row = (recent.value || [])[0]?.values?.[0] || [];
+      }
+
+     const headers = CONFIG.colMapping.map((c) => c.header);
+	// keep raw values (numbers stay numbers so Excel date serials can be recognized)
+	const valuesRaw = (row || []).map((v) => (v === undefined ? null : v));
+	setPreview({ headers, values: valuesRaw });
+
+    } catch (e: any) {
+      setErr(String(e.message || e));
+    } finally {
+      setPreviewBusy(false);
+    }
+  }
+
+	/* for fetching open positions rows*/
+	async function fetchPending() {
+	  if (!account) return;
+	  setErr("");
+	  setLoadingPending(true);
+	  try {
+		// 1) Get Excel's actual columns (name -> index in the sheet)
+		const cols = await graphFetch(
+		  `${wbPath()}/tables('${encodeURIComponent(CONFIG.tableName)}')/columns?$select=name,index`,
+		  { method: "GET" }
+		);
+		const colIdx = new Map<string, number>();
+		(cols.value || []).forEach((c: any) => colIdx.set(String(c.name).trim(), c.index));
+
+		// Resolve needed columns (by Excel's real names)
+		const sIdx = colIdx.get("Status");
+		const tIdx = colIdx.get("Ticker");
+		const inIdxExcel = colIdx.get("In date");
+		if (sIdx == null || tIdx == null || inIdxExcel == null) {
+		  throw new Error("Missing one or more required columns: Status, Ticker, In date.");
+		}
+
+		// Also get the CONFIG position of "In date" (for display/sort after reordering)
+		const inIdxConfig = CONFIG.colMapping.findIndex((c) => c.header === "In date");
+
+		// 2) Pull rows
+		const rows = await listAllRows();
+
+		const pendingRows = rows
+		  // Filter by Excel's real indexes
+		  .filter((r: any) => {
+			const row = r?.values?.[0] || [];
+			const statusVal = row[sIdx];
+			const tickerVal = row[tIdx];
+			const statusEmpty =
+			  statusVal == null || String(statusVal).replace(/\u00a0/g, " ").trim() === "";
+			const tickerFilled =
+			  tickerVal != null && String(tickerVal).replace(/\u00a0/g, " ").trim() !== "";
+			return statusEmpty && tickerFilled;
+		  })
+		  // Reorder each row to match CONFIG.colMapping so render uses correct cells
+		  .map((r: any) => {
+			const row = r?.values?.[0] || [];
+			const aligned = CONFIG.colMapping.map((c) => {
+			  const real = colIdx.get(c.header);
+			  return real != null ? row[real] : "";
+			});
+
+			// Pretty "In date" for display using CONFIG position
+			if (inIdxConfig >= 0) {
+			  const d = toJsDate(aligned[inIdxConfig]);
+			  aligned[inIdxConfig] = fmtDDMMMYYYY(d);
+			}
+
+			return { index: r.index, values: aligned };
+		  })
+		  // 3) Sort by newest "In date" using CONFIG position (since values are aligned now)
+		  .sort((a, b) => {
+			if (inIdxConfig < 0) return 0;
+			const aDate = toJsDate(a.values[inIdxConfig]);
+			const bDate = toJsDate(b.values[inIdxConfig]);
+			const at = aDate ? aDate.getTime() : -Infinity;
+			const bt = bDate ? bDate.getTime() : -Infinity;
+			return bt - at;
+		  });
+
+		setPending(pendingRows);
+		setMode("pending");
+	  } catch (e: any) {
+		setErr(e.message || String(e));
+	  } finally {
+		setLoadingPending(false);
+	  }
+	}
+
+
+
+	//function for editing open positions
+	async function updateRowFields(
+		  index: number,
+		  fields: Partial<{ Status: string; "Out date": string; "Exit price": string; Fees: string }>
+		) {
+		  const source = mode === "pending" ? pending : recent;
+		  const rec = source.find((r) => r.index === index);
+		  if (!rec) throw new Error("Row not found in cache");
+
+		  const nextRow = [...rec.values];
+		  for (const [hdr, val] of Object.entries(fields)) {
+			const pos = headerToIdx.get(hdr);
+			if (pos != null) nextRow[pos] = val ?? "";
+		  }
+
+		  // normalise Out date to yyyy-mm-dd if user typed a display date
+		  const odx = headerToIdx.get("Out date");
+		  if (odx != null) {
+			const v = nextRow[odx];
+			if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(String(v))) {
+			  const [dd, mon, yyyy] = String(v).split("-");
+			  const d = new Date(`${dd} ${mon} ${yyyy}`);
+			  if (!isNaN(+d)) nextRow[odx] = d.toISOString().slice(0, 10);
+			}
+		  }
+
+		  await patchRowAtIndex(index, nextRow);
+
+		  // refresh the relevant list
+		  if (mode === "pending") {
+			setPending((p) => p.filter((r) => r.index !== index)); // drop from pending
+		  } else {
+			await refresh();
+		  }
+		  setNotice("Row updated ✅");
+		  setTimeout(() => setNotice(""), 2000);
+		}
+
+
+  async function signIn() {
+  if (authBusy) return;            // hard guard
+  setAuthBusy(true);
+  setErr("");
+
+  try {
+    await ensureMsalInitialized();
+
+    // If already signed in, just load data
+    const active = msal.getActiveAccount() || msal.getAllAccounts()[0];
+    if (active) {
+      msal.setActiveAccount(active);
+      setAccount(active);
+      await Promise.all([refresh(), loadLists()]);
+      return;
+    }
+
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const request: any = {
+      scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+      prompt: "select_account",
+      redirectUri: CONFIG.redirectUri,
+    };
+
+    if (isSafari) {
+      await msal.loginRedirect(request);
+      return; // continues after redirect
+    }
+
+    // Try popup first
+    const res = await msal.loginPopup(request);
+    if (res?.account) {
+      msal.setActiveAccount(res.account);
+      setAccount(res.account);
+      await Promise.all([refresh(), loadLists()]);
+      return;
+    }
+  } catch (e: any) {
+    // If another interaction is already running, just ignore (prevents second window)
+    if (e?.errorCode === "interaction_in_progress") {
+      return;
+    }
+    // Popup blocked by browser? Fall back to redirect once.
+    if (e?.errorCode === "popup_window_error" || e?.errorCode === "popup_window_open_error") {
+      try {
+        await msal.loginRedirect({
+          scopes: ["User.Read", "Files.ReadWrite.All", "Sites.ReadWrite.All", "offline_access"],
+          redirectUri: CONFIG.redirectUri,
+        } as any);
+        return;
+      } catch (e2: any) {
+        setErr(e2.message || String(e2));
+      }
+    } else {
+      setErr(e?.message || String(e));
+    }
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+  async function signOut() {
+    try {
+      const acc = msal.getActiveAccount();
+      if (acc) {
+        await msal.logoutPopup({ account: acc, postLogoutRedirectUri: CONFIG.redirectUri } as any);
+      }
+    } finally {
+      setAccount(null);
+      setRecent([]);
+      setListOptions({});
+      setPreview(null);
+    }
+  }
+
+  // --- render ---
   return (
-    <div style={{ padding: 24, fontFamily: "system-ui, sans-serif", maxWidth: 1200, margin: "0 auto" }}>
-      <h1 style={{ marginBottom: 8 }}>Options Selector</h1>
+    <div
+      style={{
+        fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
+        padding: 12,
+        maxWidth: 720,
+        margin: "0 auto",
+        minHeight: "100vh",
+        background:
+          "linear-gradient(135deg, rgba(255,240,245,0.8) 0%, rgba(240,255,250,0.8) 33%, rgba(240,248,255,0.8) 66%, rgba(255,250,240,0.8) 100%)",
+      }}
+    >
+      <style>{` 
+		/* --- FORM GRID --- */
+		.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:12px}
+			@media (max-width:360px){.form-grid{grid-template-columns:1fr}}
 
-      {/* Controls */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <input
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          onKeyDown={(e) => e.key === "Enter" && runFlow("yields")}
-          placeholder="Enter ticker (e.g., AAPL)"
-          style={{ textTransform: "uppercase", padding: 10, minWidth: 220, borderRadius: 8, border: "1px solid #cbd5e1" }}
-        />
-        <button
-          onClick={() => runFlow("yields")}
-          disabled={loading || !symbol.trim()}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #c7e9d8",
-            background: "#eaf7f0",
-            color: "#0f5132",
-            cursor: loading || !symbol.trim() ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading && view === "yields" ? "Loading…" : "Check Yields"}
-        </button>
-        <button
-          onClick={() => runFlow("chain")}
-          disabled={loading || !symbol.trim()}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #cfe2ff",
-            background: "#eef5ff",
-            color: "#084298",
-            cursor: loading || !symbol.trim() ? "not-allowed" : "pointer",
-          }}
-        >
-          {loading && view === "chain" ? "Loading…" : "Options Chain"}
-        </button>
+			/* Label-above style */
+			.field2{display:flex;flex-direction:column;gap:6px;min-width:0}
+			.field2--full{grid-column:1 / -1}
+			.field2-label{font-weight:700;font-size:14px;color:#1f2937}
 
-        {price !== null && !err && (
-          <span
-            style={{
-              marginLeft: 12,
-              padding: "6px 10px",
-              borderRadius: 8,
-              background: "#fff3cd",
-              color: "#7a5d00",
-              border: "1px solid #ffe69c",
-              fontWeight: 600,
-            }}
-          >
-            {currency ? `${currency} ` : "$"}{price}
-          </span>
-        )}
-      </div>
+			/* White inputs, consistent height */
+			.fi-input{
+			  width:100%;min-width:0;box-sizing:border-box;appearance:none;
+			  background:#fff;color:#0f172a;
+			  border:1px solid #e5e7eb;border-radius:12px;
+			  height:52px;padding:12px 14px;font-size:16px;line-height:22px;
+			  outline:none;transition:border-color .15s,box-shadow .15s,background .15s
+			}
+			.fi-input:focus{border-color:#cbd5e1;box-shadow:0 0 0 3px rgba(99,102,241,.12)}
+			.is-select{padding-right:34px}
 
-      {/* Errors */}
-      {err && <p style={{ color: "crimson", marginTop: 8 }}>{err}</p>}
-      {chainErr && <p style={{ color: "crimson", marginTop: 8 }}>{chainErr}</p>}
+			/* Recent tweaks you already wanted */
+			.k{font-weight:700}
+			.recent-table th{font-weight:700}
+		/* --- PREVIEW (no horizontal scroll) --- */
+			.preview-grid{
+			  display:grid;
+			  grid-template-columns:repeat(2,minmax(0,1fr)); /* 2 cols on phones */
+			  gap:8px;
+			}
+			@media (min-width:640px){ .preview-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+			@media (min-width:960px){ .preview-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
 
-      {/* ---- Yields ONLY (PUTS ONLY) ---- */}
-      {view === "yields" && topPuts && uPrice != null && (
-        <div className="yields-panel" style={{ marginTop: 12 }}>
-          {/* Timestamp only (as you asked earlier) */}
-          <div className="y-meta" style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
-            Data timestamp: <strong>{dataTimestamp ?? new Date().toLocaleString()}</strong>
-          </div>
+			.pv{
+			  background:rgba(255,255,255,.7);
+			  border:1px solid #eee;
+			  border-radius:10px;
+			  padding:8px 10px;
+			  min-width:0; /* allow wrapping */
+			}
+			.pv-k{ font-size:12px; color:#6b7280; font-weight:600; margin-bottom:2px; }
+			.pv-v{ font-weight:600; word-break:break-word; overflow-wrap:anywhere; }
 
-          {/* Simple Stock IV box */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-              gap: 12,
-              marginBottom: 12,
-            }}
-          >
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 12, background: "#fafafa" }}>
-              <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 4 }}>Stock IV (est.)</div>
-              <div style={{ fontSize: 18, fontWeight: 700 }}>
-                {stockIvPct != null ? `${stockIvPct}%` : "—"}
-              </div>
+			/* --- RECENT: stacked cards, responsive grid inside --- */
+			.recent-stack{display:grid;grid-template-columns:1fr;row-gap:12px}
+
+			.recent-card{
+			  background:rgba(255,255,255,.55);
+			  border:1px solid rgba(0,0,0,.06);
+			  border-radius:12px;
+			  padding:10px 12px;
+			  box-shadow:0 1px 4px rgba(0,0,0,.04);  /* very subtle separator */
+			}
+
+			/* fields grid inside a card */
+			.recent-fields{
+			  display:grid;
+			  grid-template-columns:repeat(2,minmax(0,1fr)); /* phones: 2 cols */
+			  column-gap:12px; row-gap:6px; align-items:baseline;
+			}
+			@media (min-width:640px){ .recent-fields{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
+			@media (min-width:960px){ .recent-fields{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+			/* label/value on one line */
+			.rf{display:flex;gap:6px;min-width:0}
+			.rf .k{font-weight:400;color:#838991;white-space:nowrap}
+			.rf .v{font-weight:500;overflow-wrap:anywhere}
+			
+			/* Inline minus toggle for numeric inputs */
+			.num-wrap{ position:relative; }
+			.num-wrap .neg-btn{
+			  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+			  border:1px solid #e5e7eb; background:#fff; border-radius:8px;
+			  padding:2px 6px; font-weight:700; line-height:1; cursor:pointer;
+			  box-shadow:0 1px 3px rgba(0,0,0,.06);
+			}
+			.num-wrap .neg-btn:active{ transform:translateY(-50%) scale(.98); }
+		`}
+		</style>
+
+      <Header account={account} onSignIn={signIn} onSignOut={signOut} onRefresh={refresh} authBusy={authBusy} />
+		<div
+		  ref={msgRef}
+		  tabIndex={-1}
+		  aria-live="assertive"
+		  aria-atomic="true"
+		  style={{ outline: "none" }}
+		>
+		  {err && <Alert>{err}</Alert>}
+
+		  {notice && (
+			<div style={{
+			  background: "rgba(46, 204, 113, 0.15)",
+			  border: "1px solid rgba(46, 204, 113, 0.35)",
+			  color: "#1B5E20",
+			  padding: 10,
+			  borderRadius: 10,
+			  marginBottom: 8,
+			  backdropFilter: "blur(6px)"
+			}}>
+			  {notice}
+			</div>
+		  )}
+		</div>
+     
+      <Card tint="rgba(224,255,255,0.6)">
+        <h3 style={{ marginTop: 0 }}>Quick Add Trade</h3>
+        <form
+			onSubmit={save}
+			className="form-grid"
+			style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}
+		>
+          {mainFields.map((c) => (
+			  <Field
+				key={c.header}
+				label={c.header}
+				value={(form as any)[c.key]}
+				full={c.header === "Notes"}
+			  >
+				{renderInput(c, form as any, onChange, listOptions)}
+			  </Field>
+			))}
+
+          {/* Trade Out toggle */}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <div
+              role="button"
+              onClick={() => setShowOut((s) => !s)}
+              style={{
+                userSelect: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: "rgba(255,255,255,0.5)",
+                border: "1px solid rgba(0,0,0,0.06)",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.05)",
+                backdropFilter: "blur(6px)",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              <span>Trade Out</span>
+              <span>{showOut ? "▾" : "▸"}</span>
             </div>
           </div>
 
-          {/* Puts table only, entire row uses soft green gradient by Vs goal */}
-          <div className="yields-grid">
-            <div className="yield-card">
-              <h4><span className="y-badge">Puts (Top 10)</span></h4>
-              {(() => {
-                const puts = topPuts ?? [];
-                let min = 0, max = 0;
-                if (puts.length) {
-                  min = puts[0].vsGoalBps; max = puts[0].vsGoalBps;
-                  for (const r of puts) {
-                    if (r.vsGoalBps < min) min = r.vsGoalBps;
-                    if (r.vsGoalBps > max) max = r.vsGoalBps;
-                  }
-                }
-                return (
-                  <table className="yield-table">
-                    <thead>
-                      <tr>
-                        <th>Strike</th>
-                        <th>DTE</th>
-                        <th>Bid</th>
-                        <th>Delta</th>
-                        <th>Yield</th>
-                        <th>Prob OTM</th>
-                        <th>Yield Goal</th>
-                        <th>Vs goal</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {puts.length ? (
-                        puts.map((r) => (
-                          <tr key={`p-${r.expiry}-${r.strike}`} style={rowStyle(r.vsGoalBps, min, max)}>
-                            <td style={{ textAlign: "left" }}>{r.strike}</td>
-                            <td>{r.dte}</td>
-                            <td>{fmtNum(r.bid)}</td>
-                            <td>{fmtDelta(r.delta)}</td>
-                            <td>{fmtPct(r.yieldPct)}%</td>
-                            <td>{fmt0(r.probOTM)}%</td>
-                            <td>{fmtPct(r.yieldGoalPct)}%</td>
-                            <td>{(Math.round(r.vsGoalBps) >= 0 ? "+" : "") + Math.round(r.vsGoalBps) + " bps"}</td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr><td colSpan={8} style={{ textAlign: "center" }}>—</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ---- Chain ONLY (unchanged) ---- */}
-      {view === "chain" && expiries.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          {/* Tabs */}
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
-            {expiries.map((ex: ExpirySlice, i: number) => (
-              <button
-                key={ex.expiry + i}
-                onClick={() => setActiveIdx(i)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  background: i === activeIdx ? "#eaf2ff" : "#ffffff",
-                  color: "#111827",
-                  whiteSpace: "nowrap",
-                  cursor: "pointer",
-                }}
-                title={ex.expiry}
-              >
-                {formatExpiry(ex.expiry)}
-              </button>
+          {showOut &&
+            outFields.map((c) => (
+              <Field key={c.header} label={c.header}  value={(form as any)[c.key]}>
+                {renderInput(c, form as any, onChange, listOptions)}
+              </Field>
             ))}
+
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "center", gap: 8, marginTop: 10 }}>
+            <button disabled={!account || previewBusy} onClick={handlePreview} style={btn()}>
+              {previewBusy ? "Preparing preview…" : "Preview"}
+            </button>
+            <button disabled={!account || saving} onClick={(e) => save(e)} style={btn()}>
+              {saving ? "Saving…" : "Save Trade"}
+            </button>
           </div>
+        </form>
+      </Card>
 
-          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
-            Data timestamp: <strong>{dataTimestamp ?? new Date().toLocaleString()}</strong>
-          </div>
+      {preview && (
+		  <Card tint="rgba(255,228,225,0.6)">
+			<h3 style={{ marginTop: 0 }}>Preview (not saved yet)</h3>
 
-          {/* Underlier badge */}
-          {uPrice !== null && (
-            <div style={{ marginTop: 2, marginBottom: 8, display: "inline-block",
-              padding: "4px 8px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-              Underlier: <strong>{uPrice}</strong>
-            </div>
-          )}
+			{(() => {
+			  // Pair up headers + values and drop blanks, but always show key fields.
+			  const ALWAYS_SHOW = new Set([
+				"Type","In date","Ticker","Strike","Position","Avg price",
+				"Fees","Exp date","Status","Exit price","Proceeds","P&L","Notes"
+			  ]);
 
-          {/* Chain table */}
-          <div className="options-wrap">
-            <div className="scroll-xy">
-              <table className="options-table">
-                <thead>
-                  <tr>
-                    <th colSpan={5}>Calls</th>
-                    <th className="strike-sticky">Strike</th>
-                    <th colSpan={5}>Puts</th>
-                  </tr>
-                  <tr>
-                    <th>IV %</th>
-                    <th>Delta</th>
-                    <th>Ask</th>
-                    <th>Bid</th>
-                    <th>Last</th>
-                    <th className="strike-sticky">-</th>
-                    <th>Last</th>
-                    <th>Bid</th>
-                    <th>Ask</th>
-                    <th>Delta</th>
-                    <th>IV %</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const c = r.call, p = r.put;
-                    const isAt = uPrice !== null && r.strike === Math.round(uPrice);
+			  const pairs = (preview.headers || []).map((h, i) => {
+				const raw = (preview.values || [])[i];
+				const disp = prettyCell(raw, h);
+				const isBlank = disp === "" || disp == null;
+				return { h, v: disp, isBlank };
+			  });
 
-                    const callClass =
-                      c && uPrice !== null ? (r.strike < uPrice ? "call-itm" : "call-otm") : "";
-                    const putClass =
-                      p && uPrice !== null ? (r.strike > uPrice ? "put-itm" : "put-otm") : "";
+			  const visible = pairs.filter(p => !p.isBlank || ALWAYS_SHOW.has(p.h));
 
-                    return (
-                      <tr key={r.strike}>
-                        <td className={callClass}>{fmtPct(c?.iv)}</td>
-                        <td className={callClass}>{fmtDelta(c?.delta)}</td>
-                        <td className={callClass}>{fmtNum(c?.ask)}</td>
-                        <td className={callClass}>{fmtNum(c?.bid)}</td>
-                        <td className={callClass}>{fmtNum(c?.last)}</td>
-                        <td className={`strike-sticky ${isAt ? "strike-underlier" : ""}`}>{r.strike}</td>
-                        <td className={putClass}>{fmtNum(p?.last)}</td>
-                        <td className={putClass}>{fmtNum(p?.bid)}</td>
-                        <td className={putClass}>{fmtNum(p?.ask)}</td>
-                        <td className={putClass}>{fmtDelta(p?.delta)}</td>
-                        <td className={putClass}>{fmtPct(p?.iv)}</td>
-                      </tr>
-                    );
-                  })}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={11} style={{ textAlign: "center", padding: 24 }}>
-                        No data for this expiry.
-                      </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+			  return (
+				<div className="preview-grid">
+				  {visible.map(({ h, v }) => (
+					<div className="pv" key={h}>
+					  <div className="pv-k">{h}</div>
+					  <div className="pv-v">{v}</div>
+					</div>
+				  ))}
+				</div>
+			  );
+			})()}
+
+			<div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+			  <button
+				onClick={async () => { await save(new Event("submit") as any); setPreview(null); }}
+				style={btn()}
+				{...btnHoverProps()}
+			  >
+				Confirm & Save
+			  </button>
+			  <button onClick={() => setPreview(null)} style={btn("#eee", "#111")} {...btnHoverProps()}>
+				Cancel
+			  </button>
+			</div>
+		  </Card>
+		)}
+
+
+      <Card tint="rgba(255,255,224,0.6)">
+		  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+			<h3 style={{ marginTop: 0 }}>
+			  {mode === "pending" ? "Open positions" : "Recent trades"}
+			</h3>
+			<div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+			  {mode === "pending" ? (
+				<button
+				  style={btn("#eee", "#111")}
+				  {...btnHoverProps()}
+				  onClick={() => setMode("normal")}
+				>
+				  Back
+				</button>
+			  ) : (
+				<button
+				  style={{ ...btn(), paddingBottom: 8 }}
+				  {...btnHoverProps()}
+				  onClick={fetchPending}
+				  disabled={!account || loadingPending}
+				  aria-busy={loadingPending}
+				>
+				  {loadingPending ? "Loading…" : "Open positions"}
+				</button>
+			  )}
+			</div>
+		  </div>
+
+		  {(() => {
+			const rowsToShow = mode === "pending" ? pending : recent;
+			if (rowsToShow.length === 0) {
+			  return <div className="recent-card">No rows to show 🎉</div>;
+			}
+
+			return (
+			  <div className="recent-stack">
+				{rowsToShow.map((rowObj, i) => {
+				  // Support both pending objects ({ index, values }) and recent arrays
+				  const values = Array.isArray(rowObj) ? rowObj : rowObj.values;
+				  const rowIndex = Array.isArray(rowObj) ? i : rowObj.index;
+				  const isBlankStatus =
+					statusColumnIndex >= 0 &&
+					(values[statusColumnIndex] == null ||
+					  String(values[statusColumnIndex]).trim() === "");
+
+				  const showIdxs = getRecentVisibleIndices();
+
+				  return (
+					<div
+					  key={rowIndex}
+					  className="recent-card"
+					  style={{ background: isBlankStatus ? "#ffffff" : undefined }}
+					>
+					  <div className="recent-fields">
+						{showIdxs.map((j) => {
+						  const header = CONFIG.colMapping[j].header;
+						  const cell = values[j];
+						  const val = prettyCell(cell, header);
+						  return (
+							<div key={j} className="rf">
+							  <span className="k">{header}:</span>
+							  <span className="v" style={cellStyle(header, cell)}>
+								{val || "-"}
+							  </span>
+							</div>
+						  );
+						})}
+					  </div>
+
+					  {mode === "pending" && (
+						<div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, paddingBottom: 6 }}>
+						  <button
+							style={btn("#eee", "#111")}
+							{...btnHoverProps()}
+							onClick={() => {
+							  const get = (h: string) =>
+								values[headerToIdx.get(h)!] ?? "";
+							  setEditRow({
+								index: rowIndex,
+								status: String(get("Status") || ""),
+								outDate: String(get("Out date") || ""),
+								exitPrice: String(get("Exit price") || ""),
+								fees: get("Fees") != null ? String(get("Fees")) : "",
+							  });
+							}}
+						  >
+							Edit
+						  </button>
+						</div>
+					  )}
+					</div>
+				  );
+				})}
+			  </div>
+			);
+		  })()}
+		</Card>
+
+	  
+	 {editRow && (
+		  <div
+			role="dialog"
+			aria-modal="true"
+			aria-label={`Edit row ${editRow.index}`}
+			style={{
+			  position: "fixed",
+			  inset: 0,
+			  zIndex: 1000,
+			  display: "flex",
+			  alignItems: "center",
+			  justifyContent: "center",
+			  padding: 12,
+			  background: "rgba(0,0,0,0.35)",
+			  backdropFilter: "blur(2px)",
+			}}
+			onClick={() => setEditRow(null)} // click backdrop to close
+		  >
+			<div
+			  onClick={(e) => e.stopPropagation()} // prevent backdrop close on inner click
+			  style={{ width: "100%", maxWidth: 640 }}
+			>
+			  <Card tint="rgba(240,248,255,0.95)">
+				<h3 style={{ marginTop: 0 }}>Edit row #{editRow.index}</h3>
+
+				<div className="form-grid">
+				  {/* Status */}
+				  <label className="field2">
+					<span className="field2-label">Status</span>
+					<select
+					  className="fi-input is-select"
+					  value={editRow.status}
+					  onChange={(e) => setEditRow({ ...editRow, status: e.target.value })}
+					  autoFocus
+					>
+					  <option value=""></option>
+					  {(listOptions["Status"] || []).map((s) => (
+						<option key={s} value={s}>{s}</option>
+					  ))}
+					</select>
+				  </label>
+
+				  {/* Out date */}
+				  <label className="field2">
+					<span className="field2-label">Out date</span>
+					<input
+					  type="date"
+					  className="fi-input"
+					  value={editRow.outDate}
+					  onChange={(e) => setEditRow({ ...editRow, outDate: e.target.value })}
+					/>
+				  </label>
+
+				  {/* Exit price */}
+					<label className="field2">
+					  <span className="field2-label">Exit price</span>
+					  <div className="num-wrap">
+						<input
+						  type="text"
+						  inputMode="decimal"
+						  className="fi-input"
+						  value={editRow.exitPrice}
+						  onChange={(e) => {
+							const v = e.target.value;
+							if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+							  setEditRow({ ...editRow, exitPrice: v });
+						  }}
+						/>
+						<button
+						  type="button"
+						  className="neg-btn"
+						  onClick={() => {
+							const s = String(editRow.exitPrice ?? "");
+							const next = s.startsWith("-") ? s.slice(1) : "-" + s.replace(/^-/,"");
+							setEditRow({ ...editRow, exitPrice: next });
+						  }}
+						>
+						  ±
+						</button>
+					  </div>
+					</label>
+
+
+				  {/* Fees */}
+				  <label className="field2">
+					<span className="field2-label">Fees</span>
+					<input
+					  type="text"
+					  inputMode="decimal"
+					  className="fi-input"
+					  value={editRow.fees}
+					  onChange={(e) => {
+						const v = e.target.value;
+						if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v))
+						  setEditRow({ ...editRow, fees: v });
+					  }}
+					/>
+				  </label>
+				</div>
+
+				<div style={{ display: "flex", gap: 8, marginTop: 10, justifyContent: "flex-end" }}>
+				  <button
+					style={btn("#eee", "#111")}
+					{...btnHoverProps()}
+					onClick={() => setEditRow(null)}
+				  >
+					Cancel
+				  </button>
+				  <button
+					style={btn()}
+					{...btnHoverProps()}
+					onClick={async () => {
+					  try {
+						await updateRowFields(editRow.index, {
+						  Status: editRow.status,
+						  "Out date": editRow.outDate,
+						  "Exit price": editRow.exitPrice,
+						  Fees: editRow.fees,
+						});
+						setEditRow(null);
+					  } catch (e: any) {
+						setErr(e.message || String(e));
+					  }
+					}}
+				  >
+					Save changes
+				  </button>
+				</div>
+			  </Card>
+			</div>
+		  </div>
+		)}
+
+
+      <p style={{ textAlign: "center", color: "#999", fontSize: 12, marginTop: 16 }}>
+        Such a cool app, so proud!.
+      </p>
+    </div>
+  );
+}
+
+// -------------------- UI helpers --------------------
+function Header({ account, onSignIn, onSignOut, onRefresh, authBusy }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+      {!account ? (
+        <button onClick={onSignIn} disabled={authBusy} style={btn()} {...btnHoverProps()}>
+          {authBusy ? "Signing in…" : "Sign in with Microsoft"}
+        </button>
+      ) : (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <small style={{ color: "#555" }}>{account.username}</small>
+          <button onClick={onRefresh} style={btn("#eee", "#111")} {...btnHoverProps()}>
+            Refresh
+          </button>
+          <button onClick={onSignOut} style={btn("#fee", "#a00")} {...btnHoverProps()}>
+            Sign out
+          </button>
         </div>
       )}
     </div>
   );
 }
 
-/* ---------- Helpers ---------- */
-function formatExpiry(s: string) {
-  const t = Date.parse(s);
-  if (!Number.isNaN(t)) {
-    const d = new Date(t);
-    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+function Field({ label, children, full }: any) {
+  return (
+    <label className={`field2${full ? " field2--full" : ""}`}>
+      <span className="field2-label">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Card({ children, tint = "rgba(255,255,255,0.6)" }: any) {
+  return (
+    <div
+      style={{
+        background: tint,
+        border: "1px solid rgba(255,255,255,0.45)",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
+        backdropFilter: "blur(10px)",
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 14,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Alert({ children }: any) {
+  return (
+    <div style={{ background: "#fee", border: "1px solid #fcc", padding: 8, borderRadius: 8, color: "#a00", marginBottom: 8 }}>
+      {children}
+    </div>
+  );
+}
+
+function renderInput(c: any, form: any, onChange: any, listOptions: Record<string, string[]>) {
+  if (LIST_COL_TABLE[c.header]) {
+    const opts = listOptions[c.header] || [];
+    const value = form[c.key] ?? "";
+    if (!value && opts.length && c.header !== "Status" && form[c.key] === "") onChange(c.key, opts[0]);
+    return (
+      <select className="fi-input is-select" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)}>
+        <option value=""></option>
+        {opts.map((opt) => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    );
   }
-  return s;
+
+  if (/date/i.test(c.header)) {
+    return <input type="date" className="fi-input" value={form[c.key] || ""} onChange={(e) => onChange(c.key, e.target.value)} />;
+  }
+  
+  // Numeric-ish fields (allow negatives like -1.23) + iOS minus toggle
+	if (/price|fees|strike|exit|proceeds|p&l|roi/i.test(c.header)) {
+	  const val = form[c.key] ?? "";
+	  const toggleNeg = () => {
+		const s = String(val || "");
+		const next = s.startsWith("-") ? s.slice(1) : ("-" + s.replace(/^-/,""));
+		onChange(c.key, next);
+	  };
+	  return (
+		<div className="num-wrap">
+		  <input
+			type="text"
+			inputMode="decimal"
+			className="fi-input"
+			value={form[c.key] ?? ""}
+			onChange={(e) => {
+			  const v = e.target.value;
+			  if (/^-?$|^-?\.$|^\.$|^-?\d+(\.\d*)?$/.test(v)) onChange(c.key, v);
+			}}
+		  />
+		  <button
+			type="button"
+			className="neg-btn"
+			onClick={() => {
+			  const s = String(form[c.key] ?? "");
+			  const next = s.startsWith("-") ? s.slice(1) : "-" + s.replace(/^-/,"");
+			  onChange(c.key, next);
+			}}
+		  >
+			±
+		  </button>
+		</div>
+
+	  );
+	}
+
+  return (
+    <input
+	  className="fi-input"
+      value={form[c.key] || ""}
+      onChange={(e) => onChange(c.key, c.header === "Ticker" ? e.target.value.toUpperCase() : e.target.value)}
+      placeholder={c.header === "Ticker" ? "AMZN" : ""}
+    />
+  );
+}
+
+function btn(bg = "linear-gradient(135deg, #ffd6e8, #d6f0ff)", color = "#333") {
+  return {
+    background: bg,
+    color,
+    padding: "10px 14px",
+    border: "1px solid rgba(255,255,255,0.4)",
+    borderRadius: 12,
+    cursor: "pointer",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+    backdropFilter: "blur(6px)",
+    transition: "all 0.2s ease",
+    fontWeight: 500,
+  } as React.CSSProperties;
+}
+function btnHoverProps() {
+  return {
+    onMouseOver: (e: any) => (e.currentTarget.style.boxShadow = "0 6px 20px rgba(0,0,0,0.15)"),
+    onMouseOut: (e: any) => (e.currentTarget.style.boxShadow = "0 4px 14px rgba(0,0,0,0.05)"),
+  };
+}
+
+// -------------------- formatting helpers --------------------
+function toJsDate(val: any) {
+  if (val === null || val === "") return null;
+  if (typeof val === "number") return new Date(Math.round((val - 25569) * 86400 * 1000));
+  const t = Date.parse(val);
+  return Number.isNaN(t) ? null : new Date(t);
+}
+function fmtDDMMMYYYY(dateObj: Date | null) {
+  if (!(dateObj instanceof Date) || isNaN(dateObj as any)) return "";
+  const d = String(dateObj.getDate()).padStart(2, "0");
+  const m = dateObj.toLocaleString("en-GB", { month: "short" });
+  const y = dateObj.getFullYear();
+  return `${d}-${m}-${y}`;
+}
+const ZERO_DEC_HEADERS = new Set(["Cost Basis", "Proceeds", "P&L", "Margin"]);
+const PCT_HEADERS = new Set(["ROI cb", "Roi"]);
+const OUT_YR_HEADER = "Out YR";
+const ZERO_DEC_NO_COMMA_HEADERS = new Set(["Out wk", "Time"]);
+function isFalseText(v: any) {
+  return typeof v === "string" && v.trim().toUpperCase() === "FALSE";
+}
+function toNumber(v: any) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v;
+  const s = String(v).replace(/,/g, "").trim().replace(/%$/, "");
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? null : n;
+}
+function fmtNumber(n: number, decimals = 2) {
+  return new Intl.NumberFormat("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(n);
+}
+function parsePct(v: any) {
+  if (v == null || v === "") return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (s.endsWith("%")) return parseFloat(s) / 100;
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? null : n;
+}
+function isNumberLike(v: any) {
+  if (typeof v === "number") return true;
+  if (v == null || v === "") return false;
+  return !Number.isNaN(parseFloat(String(v).replace(/,/g, "")));
+}
+function cellStyle(header: string, raw: any) {
+  const h = (header || "").toLowerCase();
+  if (h === "p&l") {
+    const n = isNumberLike(raw) ? parseFloat(String(raw).replace(/,/g, "")) : null;
+    if (n == null) return {};
+    if (n > 0) return { background: n > 1000 ? "rgba(34,197,94,0.30)" : "rgba(34,197,94,0.18)" };
+    if (n < 0) return { background: "rgba(239,68,68,0.20)" };
+    return {};
+  }
+  if (header.toLowerCase() === "status") {
+	  if (raw == null || String(raw).trim() === "") {
+		return { background: "#ffffff" }; // blank → white
+	  }
+	}
+  if (h === "roi" || h === "roi cb") {
+    const p = parsePct(raw);
+    if (p == null) return {};
+    return p >= 0 ? { background: "rgba(34,197,94,0.18)" } : { background: "rgba(239,68,68,0.20)" };
+    }
+  if (h === "status") {
+    const COLORS: any = { sold: "#111", assigned: "#e67e22", expired: "#2ecc71", hold: "#1e90ff", savlage: "#b00020" };
+    const clr = COLORS[String(raw || "").trim().toLowerCase()];
+    return clr ? { color: clr, fontWeight: 600 } : {};
+  }
+  if (h === "acc") {
+    const n = isNumberLike(raw) ? Math.round(parseFloat(String(raw))) : null;
+    const ACC_COLORS: any = { 524: "#1aa64a", 577: "#ff8c00", 458: "#7856ff", 44: "#000000" };
+    const clr = n != null ? ACC_COLORS[n] : null;
+    return { color: clr || "#333", fontWeight: 600 };
+  }
+  if (h === "term") {
+    if (String(raw || "").toUpperCase().includes("LT")) {
+      return { background: "rgba(99,102,241,0.20)", fontWeight: 600, borderRadius: 10, padding: "4px 8px" };
+    }
+  }
+  return {};
+}
+function prettyCell(cell: any, header: string) {
+  if (cell === null || cell === undefined || isFalseText(cell)) return "";
+  if (/date/i.test(header)) return fmtDDMMMYYYY(toJsDate(cell));
+  if (header === OUT_YR_HEADER) {
+    const n = toNumber(cell);
+    if (n === null || n === 1900) return "";
+    return String(n);
+  }
+  if (ZERO_DEC_NO_COMMA_HEADERS.has(header)) {
+    const n = toNumber(cell);
+    return n === null ? "" : String(Math.round(n));
+  }
+  if (PCT_HEADERS.has(header)) {
+    const p = parsePct(cell);
+    if (p == null) return "";
+    return `${fmtNumber((p as number) * 100, 0)}%`;
+  }
+  if (ZERO_DEC_HEADERS.has(header)) {
+    const n = toNumber(cell);
+    return n === null ? "" : fmtNumber(n!, 0);
+  }
+  if (header === "Acc") {
+    const n = toNumber(cell);
+    return n === null ? String(cell) : String(Math.round(n));
+  }
+  if (/^position$/i.test(header)) {
+    return Number(cell || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+  if (header === "Term") return String(cell);
+  const n = toNumber(cell);
+  if (n !== null && Number.isFinite(n)) return fmtNumber(n!, 2);
+  return String(cell);
 }
